@@ -1,5 +1,4 @@
 import random
-from generateErrorFreeReads import read_genome_from_fasta, generate_error_free_reads
 
 
 def introduce_errors(read, error_prob):
