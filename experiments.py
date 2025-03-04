@@ -229,26 +229,17 @@ def run_simulations_num_iteration(params_list, num_iterations=5, path="plots"):
         experiment_folder = f"{path}/test_assembly/N={params['num_reads']}_l={params['read_length']}_p={params['error_prob']}"
         os.makedirs(experiment_folder, exist_ok=True)
 
-        all_iteration_results_error_free = []
         all_iteration_results_error_prone = []
 
         for i in range(num_iterations):
-            results_ef, results_ep = run_simulations([params], num_iteration=i + 1, path=experiment_folder)  # first iteration is 1
-            all_iteration_results_error_free.append(results_ef[0])  # Get first dict from the list
+            results_ep = run_simulations([params], num_iteration=i + 1, path=experiment_folder)  # first iteration is 1
             all_iteration_results_error_prone.append(results_ep[0])  # Get first dict from the list
 
         # Extract **only numeric keys** for averaging
         numeric_keys = [
-            key for key in all_iteration_results_error_free[0].keys()
-            if isinstance(all_iteration_results_error_free[0][key], (int, float, np.number))
+            key for key in all_iteration_results_error_prone[0].keys()
+            if isinstance(all_iteration_results_error_prone[0][key], (int, float, np.number))
         ]
-        # Calculate averages and standard deviations for all performance measures
-        avg_results_error_free = {
-            key: np.mean([r[key] for r in all_iteration_results_error_free]) for key in numeric_keys
-        }
-        std_results_error_free = {
-            key: np.std([r[key] for r in all_iteration_results_error_free]) for key in numeric_keys
-        }
 
         avg_results_error_prone = {
             key: np.mean([r[key] for r in all_iteration_results_error_prone]) for key in numeric_keys
@@ -260,12 +251,9 @@ def run_simulations_num_iteration(params_list, num_iterations=5, path="plots"):
         # Rename keys for clarity
         formatted_results = {
             **params,
-            **{f"{key} (EF) avg": avg_results_error_free[key] for key in avg_results_error_free},
-            **{f"{key} (EF) std": std_results_error_free[key] for key in std_results_error_free},
-            **{f"{key} (EP) avg": avg_results_error_prone[key] for key in avg_results_error_prone},
-            **{f"{key} (EP) std": std_results_error_prone[key] for key in std_results_error_prone},
-            **{f"{key} (EP) raw": [r[key] for r in all_iteration_results_error_prone] for key in numeric_keys},
-            **{f"{key} (EF) raw": [r[key] for r in all_iteration_results_error_free] for key in numeric_keys}
+            **{f"{key} avg": avg_results_error_prone[key] for key in avg_results_error_prone},
+            **{f"{key} std": std_results_error_prone[key] for key in std_results_error_prone},
+            **{f"{key} raw": [r[key] for r in all_iteration_results_error_prone] for key in numeric_keys},
         }
 
         results.append(formatted_results)
@@ -283,9 +271,8 @@ def run_simulations(params_list, num_iteration, path="plots"):
         path (str): Path to save the plots.
 
     Returns:
-        tuple: Tuple of lists of result dictionaries for error-free and error-prone assemblies.
+        list: List of result dictionaries
     """
-    results_error_free = []
     results_error_prone = []
 
     for params in params_list:
@@ -293,13 +280,10 @@ def run_simulations(params_list, num_iteration, path="plots"):
                                  params['error_prob'], params['experiment_name'], num_iteration, path)
 
         # Add parameters to results
-
-        result_error_free = {**params, **measures["error_free"]}
-        result_error_prone = {**params, **measures["error_prone"]}
-        results_error_free.append(result_error_free)
+        result_error_prone = {**params, **measures}
         results_error_prone.append(result_error_prone)
 
-    return results_error_free, results_error_prone
+    return results_error_prone
 
 
 def save_results(results, experiment_name, path="results"):
@@ -473,85 +457,167 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
     else:
         x_axis_label = x_key
 
-    # Loop for error-prone results
     error_type_str = "Error-Prone"
-    for error_type in ["EP"]:
-        # Create path for the experiment
-        full_path = f"{path}/{error_type_str}"
-        os.makedirs(full_path, exist_ok=True)
 
-        # 1. Plot combined graph with all p values
+    # Create path for the experiment
+    full_path = f"{path}/{error_type_str}"
+    os.makedirs(full_path, exist_ok=True)
+
+    # 1. Plot combined graph with all p values
+    for include_raw in [False, True]:
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        axes = axes.flatten()
+
+        # Plot each metric
+        for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+            ax = axes[i]
+
+            # Data for average trend line
+            all_x = []
+            all_y = []
+
+            # For each error probability, plot a separate line
+            for p_idx, p in enumerate(p_values):
+                # Filter data for this p value
+                df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+
+                if df_p.empty:
+                    continue
+
+                x_values = df_p[x_key].values
+                metric_avg = df_p[f"{metric} avg"].values
+                metric_std = df_p[f"{metric} std"].values
+
+                # Collect data for overall trend line
+                all_x.extend(x_values)
+                all_y.extend(metric_avg)
+
+                # Plot data with error bars
+                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                            label=f"p={p}", color=colors[p_idx % len(colors)],
+                            capsize=5, markersize=6)
+
+                # Overlay raw data points if requested
+                if include_raw:
+                    raw_data = df_p[f"{metric} raw"].values
+                    for j, raw_vals in enumerate(raw_data):
+                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
+                                   marker='o')
+
+            # Add coverage information to x-axis if available
+            if coverage_key:
+                # Get all unique x_value and coverage combinations
+                x_coverage_map = {}
+                for x in sorted(df[x_key].unique()):
+                    # Find corresponding coverage for this x value (should be same for all p)
+                    coverage = df[df[x_key] == x][coverage_key].iloc[0]
+                    x_coverage_map[x] = coverage
+
+                # Create x-tick labels with coverage info
+                x_ticks = sorted(x_coverage_map.keys())
+                x_labels = [f"{x}\n(C={x_coverage_map[x]:.1f}x)" for x in x_ticks]
+
+                ax.set_xticks(x_ticks)
+                ax.set_xticklabels(x_labels, rotation=45)
+
+            # Add average trend line if we have enough data points
+            if len(all_x) > 2:
+                # Sort by x for proper line plotting
+                sorted_indices = np.argsort(all_x)
+                sorted_x = np.array(all_x)[sorted_indices]
+                sorted_y = np.array(all_y)[sorted_indices]
+
+                # Fit a polynomial (degree = min(3, len(unique x) - 1))
+                degree = min(3, len(set(all_x)) - 1)
+                if degree > 0:  # Need at least 2 points for a line
+                    trend = np.polyfit(sorted_x, sorted_y, degree)
+                    trend_y = np.polyval(trend, sorted_x)
+                    ax.plot(sorted_x, trend_y, 'k--', linewidth=2, label="Average Trend")
+
+            # Set x-axis to log scale if requested
+            if log_scale:
+                ax.set_xscale('log')
+
+            # Add labels and title
+            ax.set_xlabel(x_axis_label)
+            ax.set_ylabel(label)
+            ax.set_title(f"{label} vs. {x_axis_label} for Different p ({num_iterations} iterations)")
+            ax.grid(True, alpha=0.3)
+
+            # Add legend
+            ax.legend(title="Error Probability (p)", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Adjust layout
+        plt.tight_layout()
+        suffix = "_with_raw" if include_raw else ""
+
+        # Save plot
+        output_path = f"{full_path}/plot_by_p_values{suffix}.png"
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Combined plot saved to {output_path}")
+
+    # 2. Create individual plots for each p value
+    for p_idx, p in enumerate(p_values):
         for include_raw in [False, True]:
             # Create figure with subplots
             fig, axes = plt.subplots(2, 2, figsize=(15, 10))
             axes = axes.flatten()
 
+            # Filter data for this p value
+            df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+
+            if df_p.empty:
+                continue
+
             # Plot each metric
             for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
                 ax = axes[i]
 
-                # Data for average trend line
-                all_x = []
-                all_y = []
+                # Get data
+                x_values = df_p[x_key].values
+                metric_avg = df_p[f"{metric} avg"].values
+                metric_std = df_p[f"{metric} std"].values
 
-                # For each error probability, plot a separate line
-                for p_idx, p in enumerate(p_values):
-                    # Filter data for this p value
-                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+                # Plot data with error bars
+                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                            color=colors[p_idx % len(colors)],
+                            capsize=5, markersize=6)
 
-                    if df_p.empty:
-                        continue
-
-                    x_values = df_p[x_key].values
-                    metric_avg = df_p[f"{metric} ({error_type}) avg"].values
-                    metric_std = df_p[f"{metric} ({error_type}) std"].values
-
-                    # Collect data for overall trend line
-                    all_x.extend(x_values)
-                    all_y.extend(metric_avg)
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                label=f"p={p}", color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} ({error_type}) raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
-                                       marker='o')
+                # Overlay raw data points if requested
+                if include_raw:
+                    raw_data = df_p[f"{metric} raw"].values
+                    for j, raw_vals in enumerate(raw_data):
+                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
 
                 # Add coverage information to x-axis if available
                 if coverage_key:
-                    # Get all unique x_value and coverage combinations
-                    x_coverage_map = {}
-                    for x in sorted(df[x_key].unique()):
-                        # Find corresponding coverage for this x value (should be same for all p)
-                        coverage = df[df[x_key] == x][coverage_key].iloc[0]
-                        x_coverage_map[x] = coverage
-
                     # Create x-tick labels with coverage info
-                    x_ticks = sorted(x_coverage_map.keys())
-                    x_labels = [f"{x}\n(C={x_coverage_map[x]:.1f}x)" for x in x_ticks]
+                    x_ticks = x_values
+                    x_labels = [f"{x}\n(C={df_p[df_p[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
 
                     ax.set_xticks(x_ticks)
                     ax.set_xticklabels(x_labels, rotation=45)
 
-                # Add average trend line if we have enough data points
-                if len(all_x) > 2:
-                    # Sort by x for proper line plotting
-                    sorted_indices = np.argsort(all_x)
-                    sorted_x = np.array(all_x)[sorted_indices]
-                    sorted_y = np.array(all_y)[sorted_indices]
+                # Add trend line if we have enough points
+                if len(x_values) > 1:
+                    # For better trends, sort the values by x
+                    sorted_indices = np.argsort(x_values)
+                    sorted_x = np.array(x_values)[sorted_indices]
+                    sorted_y = np.array(metric_avg)[sorted_indices]
 
-                    # Fit a polynomial (degree = min(3, len(unique x) - 1))
-                    degree = min(3, len(set(all_x)) - 1)
-                    if degree > 0:  # Need at least 2 points for a line
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        trend_y = np.polyval(trend, sorted_x)
-                        ax.plot(sorted_x, trend_y, 'k--', linewidth=2, label="Average Trend")
+                    # Calculate degree for polynomial fit
+                    degree = min(len(set(x_values)) - 1, 3)  # At most cubic, at least linear if possible
+                    degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
+
+                    trend = np.polyfit(sorted_x, sorted_y, degree)
+                    x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
+                    trend_y = np.polyval(trend, x_for_trend)
+
+                    ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
 
                 # Set x-axis to log scale if requested
                 if log_scale:
@@ -560,103 +626,20 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 # Add labels and title
                 ax.set_xlabel(x_axis_label)
                 ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_axis_label} for Different p ({num_iterations} iterations)")
+                ax.set_title(f"{label} vs. {x_axis_label} (p={p}, {num_iterations} iterations)")
                 ax.grid(True, alpha=0.3)
-
-                # Add legend
-                ax.legend(title="Error Probability (p)", bbox_to_anchor=(1.05, 1), loc='upper left')
+                if len(x_values) > 1:  # Only add legend if we have trend line
+                    ax.legend()
 
             # Adjust layout
             plt.tight_layout()
             suffix = "_with_raw" if include_raw else ""
 
             # Save plot
-            output_path = f"{full_path}/plot_by_p_values{suffix}.png"
-            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            output_file = f"{full_path}/plot_by_{x_key}_p_{p}{suffix}.png"
+            plt.savefig(output_file, dpi=300, bbox_inches='tight')
             plt.close()
-            print(f"Combined plot saved to {output_path}")
-
-        # 2. Create individual plots for each p value
-        for p_idx, p in enumerate(p_values):
-            for include_raw in [False, True]:
-                # Create figure with subplots
-                fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-                axes = axes.flatten()
-
-                # Filter data for this p value
-                df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                if df_p.empty:
-                    continue
-
-                # Plot each metric
-                for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                    ax = axes[i]
-
-                    # Get data
-                    x_values = df_p[x_key].values
-                    metric_avg = df_p[f"{metric} ({error_type}) avg"].values
-                    metric_std = df_p[f"{metric} ({error_type}) std"].values
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} ({error_type}) raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
-
-                    # Add coverage information to x-axis if available
-                    if coverage_key:
-                        # Create x-tick labels with coverage info
-                        x_ticks = x_values
-                        x_labels = [f"{x}\n(C={df_p[df_p[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
-
-                        ax.set_xticks(x_ticks)
-                        ax.set_xticklabels(x_labels, rotation=45)
-
-                    # Add trend line if we have enough points
-                    if len(x_values) > 1:
-                        # For better trends, sort the values by x
-                        sorted_indices = np.argsort(x_values)
-                        sorted_x = np.array(x_values)[sorted_indices]
-                        sorted_y = np.array(metric_avg)[sorted_indices]
-
-                        # Calculate degree for polynomial fit
-                        degree = min(len(set(x_values)) - 1, 3)  # At most cubic, at least linear if possible
-                        degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
-
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                        trend_y = np.polyval(trend, x_for_trend)
-
-                        ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
-
-                    # Set x-axis to log scale if requested
-                    if log_scale:
-                        ax.set_xscale('log')
-
-                    # Add labels and title
-                    ax.set_xlabel(x_axis_label)
-                    ax.set_ylabel(label)
-                    ax.set_title(f"{label} vs. {x_axis_label} (p={p}, {num_iterations} iterations)")
-                    ax.grid(True, alpha=0.3)
-                    if len(x_values) > 1:  # Only add legend if we have trend line
-                        ax.legend()
-
-                # Adjust layout
-                plt.tight_layout()
-                suffix = "_with_raw" if include_raw else ""
-
-                # Save plot
-                output_file = f"{full_path}/plot_by_{x_key}_p_{p}{suffix}.png"
-                plt.savefig(output_file, dpi=300, bbox_inches='tight')
-                plt.close()
-                print(f"Individual plot saved to {output_file}")
+            print(f"Individual plot saved to {output_file}")
 
 
 def experiment_const_coverage(reference_genome, coverage_target, error_probs,
@@ -729,7 +712,7 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs,
     save_results(results, experiment_name, path=csvs_path)
 
     # Plot results
-    plot_const_coverage_results(results, experiment_name,
+    plot_const_coverage_results(results,
                                 coverage_target=coverage_target,
                                 x_axis_var=x_axis_var,
                                 path=plots_path)
@@ -763,186 +746,184 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
     light_colors = ['#a6cee3', '#fdbf6f', '#b2df8a', '#fb9a99', '#cab2d6', '#d2b48c']
 
-    # "Loop" for EP (error-prone) results
     error_type_str = "Error-Prone"
-    for error_type in ["EP"]:
-        # Create path for the experiment
-        full_path = f"{path}/{error_type_str}/coverage_{coverage_target:.1f}x" #TODO: if not work remove the coverage_target from here and return down as claude did
-        os.makedirs(full_path, exist_ok=True)
+    # Create path for the experiment
+    full_path = f"{path}/{error_type_str}/coverage_{coverage_target:.1f}x" #TODO: if not work remove the coverage_target from here and return down as claude did
+    os.makedirs(full_path, exist_ok=True)
 
-        # 1. Plot combined graph with all p values
-        for include_raw in [False, True]:
-            # Create figure with subplots
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            axes = axes.flatten()
+    # 1. Plot combined graph with all p values
+    for include_raw in [False, True]:
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        axes = axes.flatten()
 
-            # Select x-axis variable and label according to x_axis_var
-            if x_axis_var.lower() == 'n':
-                x_key = 'num_reads'
-                x_label = "N (Number of Reads)"
-                y_key = 'read_length'
-                y_label = "l (Read Length)"
-            else:  # x_axis_var == 'l'
-                x_key = 'read_length'
-                x_label = "l (Read Length)"
-                y_key = 'num_reads'
-                y_label = "N (Number of Reads)"
+        # Select x-axis variable and label according to x_axis_var
+        if x_axis_var.lower() == 'n':
+            x_key = 'num_reads'
+            x_label = "N (Number of Reads)"
+            y_key = 'read_length'
+            y_label = "l (Read Length)"
+        else:  # x_axis_var == 'l'
+            x_key = 'read_length'
+            x_label = "l (Read Length)"
+            y_key = 'num_reads'
+            y_label = "N (Number of Reads)"
 
-            # Plot each metric
-            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                ax = axes[i]
+        # Plot each metric
+        for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+            ax = axes[i]
 
-                # Data for average trend line
-                all_x = []
-                all_y = []
+            # Data for average trend line
+            all_x = []
+            all_y = []
 
-                # For each error probability, plot a separate line
-                for p_idx, p in enumerate(p_values):
-                    # Filter data for this p value
-                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                    if df_p.empty:
-                        continue
-
-                    # Get x values and corresponding y values
-                    x_values = df_p[x_key].values
-                    y_values = df_p[y_key].values
-                    metric_avg = df_p[f"{metric} ({error_type}) avg"].values
-                    metric_std = df_p[f"{metric} ({error_type}) std"].values
-
-                    # Collect data for overall trend line
-                    all_x.extend(x_values)
-                    all_y.extend(metric_avg)
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                label=f"p={p}", color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} ({error_type}) raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
-                                       marker='o')
-
-                # Create x-tick labels with the other variable values
-                x_ticks = sorted(df[x_key].unique())
-                x_labels = [f"{x}\n({y_label[0]}={df[df[x_key] == x][y_key].iloc[0]})" for x in x_ticks]
-
-                ax.set_xticks(x_ticks)
-                ax.set_xticklabels(x_labels, rotation=45)
-
-                # Add average trend line if we have enough data points
-                if len(all_x) > 2:
-                    # Sort by x for proper line plotting
-                    sorted_indices = np.argsort(all_x)
-                    sorted_x = np.array(all_x)[sorted_indices]
-                    sorted_y = np.array(all_y)[sorted_indices]
-
-                    # Fit a polynomial (degree = min(3, len(unique x) - 1))
-                    degree = min(3, len(set(all_x)) - 1) #TODO: do you think we can take the len(set(all_x)) - 2 as the degree? to get almost the best fit
-                    if degree > 0:  # Need at least 2 points for a line
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        trend_y = np.polyval(trend, sorted_x)
-                        ax.plot(sorted_x, trend_y, 'k--', linewidth=2, label="Average Trend")
-
-                # Add labels and title
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
-                ax.grid(True, alpha=0.3)
-
-                # Add legend
-                ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-            # Adjust layout
-            plt.tight_layout()
-            suffix = "_with_raw" if include_raw else ""
-
-            # Save plot
-            output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png" #TODO: if not work return the coverage_target to here and remove from up as claude did
-            plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"Plots saved to {output_file}")
-
-        # 2. Create individual plots for each p value
-        for p_idx, p in enumerate(p_values):
-            for include_raw in [False, True]:
-                # Create figure with subplots
-                fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-                axes = axes.flatten()
-
+            # For each error probability, plot a separate line
+            for p_idx, p in enumerate(p_values):
                 # Filter data for this p value
                 df_p = df[df['error_prob'] == p].sort_values(by=x_key)
 
                 if df_p.empty:
                     continue
 
-                # Plot each metric
-                for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                    ax = axes[i]
+                # Get x values and corresponding y values
+                x_values = df_p[x_key].values
+                y_values = df_p[y_key].values
+                metric_avg = df_p[f"{metric} avg"].values
+                metric_std = df_p[f"{metric} std"].values
 
-                    # Get data
-                    x_values = df_p[x_key].values
-                    y_values = df_p[y_key].values
-                    metric_avg = df_p[f"{metric} ({error_type}) avg"].values
-                    metric_std = df_p[f"{metric} ({error_type}) std"].values
+                # Collect data for overall trend line
+                all_x.extend(x_values)
+                all_y.extend(metric_avg)
 
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
+                # Plot data with error bars
+                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                            label=f"p={p}", color=colors[p_idx % len(colors)],
+                            capsize=5, markersize=6)
 
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} ({error_type}) raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
+                # Overlay raw data points if requested
+                if include_raw:
+                    raw_data = df_p[f"{metric} raw"].values
+                    for j, raw_vals in enumerate(raw_data):
+                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
+                                   marker='o')
 
-                    # Create x-tick labels
-                    x_ticks = x_values
-                    x_labels = [f"{x}\n({y_label[0]}={y})" for x, y in zip(x_values, y_values)]
+            # Create x-tick labels with the other variable values
+            x_ticks = sorted(df[x_key].unique())
+            x_labels = [f"{x}\n({y_label[0]}={df[df[x_key] == x][y_key].iloc[0]})" for x in x_ticks]
 
-                    ax.set_xticks(x_ticks)
-                    ax.set_xticklabels(x_labels, rotation=45)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels(x_labels, rotation=45)
 
-                    # Add trend line if we have enough points
-                    if len(x_values) > 1:
-                        # For better trends, sort the values by x
-                        sorted_indices = np.argsort(x_values)
-                        sorted_x = np.array(x_values)[sorted_indices]
-                        sorted_y = np.array(metric_avg)[sorted_indices]
+            # Add average trend line if we have enough data points
+            if len(all_x) > 2:
+                # Sort by x for proper line plotting
+                sorted_indices = np.argsort(all_x)
+                sorted_x = np.array(all_x)[sorted_indices]
+                sorted_y = np.array(all_y)[sorted_indices]
 
-                        # Calculate degree for polynomial fit
-                        degree = min(len(set(x_values)) - 1, 3)  # At most cubic, at least linear if possible
-                        degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
+                # Fit a polynomial (degree = min(3, len(unique x) - 1))
+                degree = min(3, len(set(all_x)) - 1) #TODO: do you think we can take the len(set(all_x)) - 2 as the degree? to get almost the best fit
+                if degree > 0:  # Need at least 2 points for a line
+                    trend = np.polyfit(sorted_x, sorted_y, degree)
+                    trend_y = np.polyval(trend, sorted_x)
+                    ax.plot(sorted_x, trend_y, 'k--', linewidth=2, label="Average Trend")
 
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                        trend_y = np.polyval(trend, x_for_trend)
+            # Add labels and title
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(label)
+            ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
+            ax.grid(True, alpha=0.3)
 
-                        ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
+            # Add legend
+            ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
 
-                    # Add labels and title
-                    ax.set_xlabel(x_label)
-                    ax.set_ylabel(label)
-                    ax.set_title(f"{label} vs. {x_label} (p={p}, C={coverage_target:.1f}x, {num_iterations} iterations)")
-                    ax.grid(True, alpha=0.3)
-                    if len(x_values) > 1:  # Only add legend if we have trend line
-                        ax.legend()
+        # Adjust layout
+        plt.tight_layout()
+        suffix = "_with_raw" if include_raw else ""
 
-                # Adjust layout
-                plt.tight_layout()
-                suffix = "_with_raw" if include_raw else ""
+        # Save plot
+        output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png" #TODO: if not work return the coverage_target to here and remove from up as claude did
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Plots saved to {output_file}")
 
-                # Save plot
-                output_file = f"{full_path}/coverage_{coverage_target}_by_{x_axis_var}_p_{p}{suffix}.png"
-                plt.savefig(output_file, dpi=300, bbox_inches='tight')
-                plt.close()
-                print(f"Individual plot saved to {output_file}")
+    # 2. Create individual plots for each p value
+    for p_idx, p in enumerate(p_values):
+        for include_raw in [False, True]:
+            # Create figure with subplots
+            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+            axes = axes.flatten()
+
+            # Filter data for this p value
+            df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+
+            if df_p.empty:
+                continue
+
+            # Plot each metric
+            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+                ax = axes[i]
+
+                # Get data
+                x_values = df_p[x_key].values
+                y_values = df_p[y_key].values
+                metric_avg = df_p[f"{metric} avg"].values
+                metric_std = df_p[f"{metric} std"].values
+
+                # Plot data with error bars
+                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                            color=colors[p_idx % len(colors)],
+                            capsize=5, markersize=6)
+
+                # Overlay raw data points if requested
+                if include_raw:
+                    raw_data = df_p[f"{metric} raw"].values
+                    for j, raw_vals in enumerate(raw_data):
+                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
+
+                # Create x-tick labels
+                x_ticks = x_values
+                x_labels = [f"{x}\n({y_label[0]}={y})" for x, y in zip(x_values, y_values)]
+
+                ax.set_xticks(x_ticks)
+                ax.set_xticklabels(x_labels, rotation=45)
+
+                # Add trend line if we have enough points
+                if len(x_values) > 1:
+                    # For better trends, sort the values by x
+                    sorted_indices = np.argsort(x_values)
+                    sorted_x = np.array(x_values)[sorted_indices]
+                    sorted_y = np.array(metric_avg)[sorted_indices]
+
+                    # Calculate degree for polynomial fit
+                    degree = min(len(set(x_values)) - 1, 3)  # At most cubic, at least linear if possible
+                    degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
+
+                    trend = np.polyfit(sorted_x, sorted_y, degree)
+                    x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
+                    trend_y = np.polyval(trend, x_for_trend)
+
+                    ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
+
+                # Add labels and title
+                ax.set_xlabel(x_label)
+                ax.set_ylabel(label)
+                ax.set_title(f"{label} vs. {x_label} (p={p}, C={coverage_target:.1f}x, {num_iterations} iterations)")
+                ax.grid(True, alpha=0.3)
+                if len(x_values) > 1:  # Only add legend if we have trend line
+                    ax.legend()
+
+            # Adjust layout
+            plt.tight_layout()
+            suffix = "_with_raw" if include_raw else ""
+
+            # Save plot
+            output_file = f"{full_path}/coverage_{coverage_target}_by_{x_axis_var}_p_{p}{suffix}.png"
+            plt.savefig(output_file, dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"Individual plot saved to {output_file}")
 
 
 # Main function to run all experiments
