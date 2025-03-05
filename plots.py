@@ -7,11 +7,13 @@ import os
 from collections import defaultdict
 from aligners import align_read_or_contig_to_reference, local_alignment
 
-lower_bound_l = 50
-upper_bound_l = 150
-lower_bound_n = 100
-upper_bound_n = 1000000
-
+try:
+    from experiments import upper_bound_n, upper_bound_l, lower_bound_n, lower_bound_l
+except ImportError:
+    lower_bound_l = 5  # 0 #TODO - change to 50
+    upper_bound_l = 14  # 150 #TODO - change to 150
+    lower_bound_n = 5  # TODO: change to 100
+    upper_bound_n = 9  # TODO: change to 1000000
 
 def plot_genome_coverage(contigs, num_reads, read_length, error_prob, reference_genome, error_type_str, experiment_name,
                          num_iteration, path):
@@ -341,14 +343,14 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
     if fixed_param_key and len(df[fixed_param_key].unique()) == 1:
         fixed_value = df[fixed_param_key].iloc[0]
 
+    # Check out-of-bounds status
+    out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
+
     # 1. Plot combined graph with all p values
     for include_raw in [False, True]:
         # Create figure with subplots
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         axes = axes.flatten()
-
-        # Check out-of-bounds status
-        out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
 
         # Add a descriptive suptitle to the figure
         if fixed_value:
@@ -397,24 +399,24 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                                    alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
                                    marker='o')
 
+            # set up axis configurations
+            setup_plot_axis(ax, x_axis_label, label, label, 'combined', num_iterations, log_scale)
+
             # Add boundary lines if specified
             if x_key == "num_reads" or x_key == "read_length":
                 add_boundary_lines(ax, x_values, lower_bound, upper_bound)
 
-                # Add coverage information to x-axis if available
-                if coverage_key:
-                    x_ticks, x_labels = generate_x_tick_labels(df, x_key, coverage_key)
-                    ax.set_xticks(x_ticks)
-                    ax.set_xticklabels(x_labels, rotation=45)
+            # Add coverage information to x-axis if available
+            if coverage_key:
+                x_ticks, x_labels = generate_x_tick_labels(df, x_key, coverage_key)
+                ax.set_xticks(x_ticks)
+                ax.set_xticklabels(x_labels, rotation=45)
 
-                # Add average trend line
-                add_average_trend_line(ax, all_x, all_y)
+            # Add average trend line
+            add_average_trend_line(ax, all_x, all_y)
 
-                # Set up axis configurations
-                setup_plot_axis(ax, x_axis_label, label, label, 'combined', num_iterations, log_scale)
-
-                # Add legend
-                ax.legend(title="Error Probability (p)", bbox_to_anchor=(1.05, 1), loc='upper left')
+            # Add legend
+            ax.legend(title="Error Probability (p)", bbox_to_anchor=(1.05, 1), loc='upper left')
 
         # Adjust layout
         plt.tight_layout()
@@ -437,10 +439,10 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
             # Add a descriptive suptitle
             if fixed_value:
                 fig.suptitle(
-                    f"Measures for fixed {fixed_param}={fixed_value}, p={p} for different {x_axis_label} values",
+                    f"Measures for fixed {fixed_param}={fixed_value}, p={p} for different {x_axis_label}  {out_of_bounds_str}values",
                     fontsize=16, y=0.98)
             else:
-                fig.suptitle(f"Measures for p={p} for different {x_axis_label} values",
+                fig.suptitle(f"Measures for p={p} for different {x_axis_label}  {out_of_bounds_str}values",
                              fontsize=16, y=0.98)
 
             # Filter data for this p value
@@ -470,39 +472,26 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                         ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
                                    alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
 
-                        # Add coverage information to x-axis if available
-                        if coverage_key:
-                            x_ticks, x_labels = generate_x_tick_labels(df_p, x_key, coverage_key)
-                            ax.set_xticks(x_ticks)
-                            ax.set_xticklabels(x_labels, rotation=45)
+                # Set up axis configurations
+                setup_plot_axis(ax, x_axis_label, label, label, p, num_iterations, log_scale)
 
-                        # Add trend line if we have enough points
-                        if len(x_values) > 1:
-                            # For better trends, sort the values by x
-                            sorted_indices = np.argsort(x_values)
-                            sorted_x = np.array(x_values)[sorted_indices]
-                            sorted_y = np.array(metric_avg)[sorted_indices]
+                # Add coverage information to x-axis if available
+                if coverage_key:
+                    x_ticks = x_values
+                    x_labels = [f"{x}\n(C={df_p[df_p[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
+                    ax.set_xticks(x_ticks)
+                    ax.set_xticklabels(x_labels, rotation=45)
 
-                            # Calculate degree for polynomial fit
-                            degree = len(set(x_values)) - 2 if len(set(x_values)) - 2 > 0 else 3
-                            degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
+                # Add trend line if we have enough points
+                add_average_trend_line(ax, x_values, metric_avg, log_scale)
 
-                            trend = np.polyfit(sorted_x, sorted_y, degree)
-                            x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                            trend_y = np.polyval(trend, x_for_trend)
+                # Add boundary lines if specified
+                if x_key == "num_reads" or x_key == "read_length":
+                    add_boundary_lines(ax, x_values, lower_bound, upper_bound)
 
-                            ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
-
-                        # Add boundary lines if specified
-                        if x_key == "num_reads" or x_key == "read_length":
-                            add_boundary_lines(ax, x_values, lower_bound, upper_bound)
-
-                        # Set up axis configurations
-                        setup_plot_axis(ax, x_axis_label, label, label, p, num_iterations, log_scale)
-
-                        # Add legend if we have trend line
-                        if len(x_values) > 1:
-                            ax.legend()
+                # Add legend if we have trend line
+                if len(x_values) > 1:
+                    ax.legend()
 
             # Adjust layout
             plt.tight_layout()
@@ -568,7 +557,7 @@ def setup_plot_axis(ax, x_axis_label, label, metric_label, p, num_iterations, lo
     ax.grid(True, alpha=0.3)
 
 
-def add_average_trend_line(ax, all_x, all_y):
+def add_average_trend_line(ax, all_x, all_y, log_scale=False):
     """
     Add an average trend line to the plot.
 
@@ -576,6 +565,7 @@ def add_average_trend_line(ax, all_x, all_y):
     - ax: matplotlib axis to add trend line to
     - all_x: List of x values
     - all_y: List of corresponding y values
+    - log_scale: Whether to use log scale (default False)
 
     Returns:
     - None (modifies the axis in-place)
@@ -589,9 +579,15 @@ def add_average_trend_line(ax, all_x, all_y):
         # Fit a polynomial (degree = min(3, len(unique x) - 2))
         degree = len(set(all_x)) - 2 if len(set(all_x)) - 2 > 0 else 3
         if degree > 0:  # Need at least 2 points for a line
-            trend = np.polyfit(sorted_x, sorted_y, degree)
-            # Create more points for a smoother curve
-            x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
+            if log_scale:
+                # Avoid negative values for log scale
+                sorted_x = [x if x > 0 else 1 for x in sorted_x]
+                trend = np.polyfit(np.log(sorted_x), sorted_y, degree)
+                x_for_trend = np.logspace(np.log(min(sorted_x)), np.log(max(sorted_x)), 100)
+            else:
+                trend = np.polyfit(sorted_x, sorted_y, degree)
+                # Create more points for a smoother curve
+                x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
             trend_y = np.polyval(trend, x_for_trend)
             ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Average Trend")
 
@@ -644,7 +640,7 @@ def add_boundary_lines(ax, x_values, lower_bound, upper_bound):
          if i + 1 == j + 1], default=0)
 
     # Helper function to check if bound should be added
-    def check_bound(bound, bound_type):
+    def check_bound(bound):
         if bound is None:
             return False
 
@@ -660,7 +656,7 @@ def add_boundary_lines(ax, x_values, lower_bound, upper_bound):
         return bound_within and not_far_enough
 
     # Add lower bound line
-    if check_bound(lower_bound, "lower"):
+    if check_bound(lower_bound):
         line = ax.vlines(lower_bound, y_min, y_max, colors='slategray',
                          linestyles='dashed', label='Lower Bound', alpha=0.5)
 
@@ -673,7 +669,7 @@ def add_boundary_lines(ax, x_values, lower_bound, upper_bound):
                 fontsize=8)
 
     # Add upper bound line
-    if check_bound(upper_bound, "upper"):
+    if check_bound(upper_bound):
         line = ax.vlines(upper_bound, y_min, y_max, colors='slategray',
                          linestyles='dashed', label='Upper Bound', alpha=0.5)
 
@@ -686,7 +682,7 @@ def add_boundary_lines(ax, x_values, lower_bound, upper_bound):
                 fontsize=8)
 
 
-def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="plots", num_iterations=5):
+def plot_const_coverage_results(results, coverage_target, x_axis_var="l", path="plots", num_iterations=5, log_scale=False):
     """
     Plot experiment results with constant coverage but varying N and l.
     Creates two sets of plots: one ordered by N and one ordered by l.
@@ -697,6 +693,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
         x_axis_var (str): Variable to use on x-axis ('n' or 'l') - used for naming only.
         path (str): Path to save the plots.
         num_iterations (int): Number of iterations run for each parameter combination.
+        log_scale (bool): Whether to use logarithmic scale for x-axis.
 
     Returns:
         None
@@ -807,18 +804,15 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     ax.set_xticks(x_ticks)
                     ax.set_xticklabels(x_labels, rotation=45)
 
+                    # Use setup_plot_axis to configure axis
+                    setup_plot_axis(ax, x_label, label, label, 'combined', num_iterations, log_scale)
+
                     # Add boundary lines if conditions are met
                     if lower_bound is not None or upper_bound is not None:
                         add_boundary_lines(ax, x_values, lower_bound, upper_bound)
 
                     # Add average trend line if we have enough data points
-                    add_average_trend_line(ax, all_x, all_y)
-
-                    # Add labels and title
-                    ax.set_xlabel(x_label)
-                    ax.set_ylabel(label)
-                    ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
-                    ax.grid(True, alpha=0.3)
+                    add_average_trend_line(ax, all_x, all_y, log_scale)
 
                     # Add legend
                     ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -856,8 +850,74 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     if df_p.empty:
                         continue
 
-                    # Previous individual p-value plot implementation follows here...
-                    # [Keeping the same implementation as before with boundary lines added]
+                    # Plot each metric
+                    for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+                        ax = axes[i]
+
+                        # Get data
+                        x_values = df_p[x_key].values
+                        y_values = df_p[y_key].values
+                        metric_avg = df_p[f"{metric} avg"].values
+                        metric_std = df_p[f"{metric} std"].values
+
+                        # Plot data with error bars
+                        ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                                    color=colors[p_idx % len(colors)],
+                                    capsize=5, markersize=6)
+
+                        # Overlay raw data points if requested
+                        if include_raw:
+                            raw_data = df_p[f"{metric} raw"].values
+                            for j, raw_vals in enumerate(raw_data):
+                                ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                           alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
+
+                        # Create x-tick labels
+                        x_ticks = x_values
+                        x_labels = [f"{x}\n({y_label[0]}={y})" for x, y in zip(x_values, y_values)]
+
+                        ax.set_xticks(x_ticks)
+                        ax.set_xticklabels(x_labels, rotation=45)
+
+                        # Add trend line if we have enough points
+                        if len(x_values) > 2:
+                            # For better trends, sort the values by x
+                            sorted_indices = np.argsort(x_values)
+                            sorted_x = np.array(x_values)[sorted_indices]
+                            sorted_y = np.array(metric_avg)[sorted_indices]
+
+                            # Calculate degree for polynomial fit
+                            degree = min(len(set(x_values)) - 2, 3)  # At most cubic, at least linear if possible
+                            degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
+
+                            trend = np.polyfit(sorted_x, sorted_y, degree)
+                            x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
+                            trend_y = np.polyval(trend, x_for_trend)
+
+                            ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
+
+                        # Add boundary lines if conditions are met
+                        if lower_bound is not None or upper_bound is not None:
+                            add_boundary_lines(ax, x_values, lower_bound, upper_bound)
+
+                        # Use setup_plot_axis to handle axis configuration consistently
+                        setup_plot_axis(ax, x_label, label, label, p,
+                                        num_iterations, log_scale)
+
+                        # Add legend if we have trend line
+                        if len(x_values) > 1:
+                            ax.legend()
+
+                    # Adjust layout
+                    plt.tight_layout()
+                    plt.subplots_adjust(top=0.9)  # Make room for suptitle
+                    suffix = "_with_raw" if include_raw else ""
+
+                    # Save plot
+                    output_file = f"{full_path}/ordered_by_{x_axis_var}_p_{p}{suffix}.png"
+                    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    print(f"Individual plot saved to {output_file}")
 
     # Generate both N-ordered and l-ordered plots
     plot_metric_data('num_reads', 'read_length',
@@ -869,5 +929,4 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                      "l (Read Length)",
                      "N (Number of Reads)",
                      lower_bound_l, upper_bound_l)
-
 
