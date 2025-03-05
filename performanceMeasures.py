@@ -220,8 +220,16 @@ def plot_genome_coverage(contigs, num_reads, read_length, error_prob, reference_
     plt.axhline(y=1, color='g', linestyle='--', label="Fully Covered Threshold")
     # "fully covered threshold" is the expected coverage if all reads were perfectly assembled (green line)
     plt.legend()
-    plt.savefig(f"{path}/{error_type_str}_genome_coverage_iteration_{str(num_iteration)}.png")
-    plt.close()  # Close the figure to free memory
+    try:
+        directory = os.path.dirname(f"{path}/{error_type_str}_genome_coverage_iteration_{str(num_iteration)}.png")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        plt.savefig(f"{path}/{error_type_str}_genome_coverage_iteration_{str(num_iteration)}.png")
+    except Exception as e:
+        print(f"Error saving plot: {e}")
+        print(f"Parameters: experiment_name={experiment_name}, num_iteration={num_iteration}, path={path}")
+    finally:
+        plt.close()  # Close the figure to free memory
 
 
 def plot_genome_depth(reads, reference_genome, read_length, error_prob, error_type_str, experiment_name,
@@ -281,8 +289,16 @@ def plot_genome_depth(reads, reference_genome, read_length, error_prob, error_ty
     else:
         print("Warning: No coverage values available. Check the alignment process.")
 
-    plt.savefig(f"{path}/{error_type_str}_genome_depth_iteration_{str(num_iteration)}.png")
-    plt.close()
+    try:
+        directory = os.path.dirname(f"{path}/{error_type_str}_genome_depth_iteration_{str(num_iteration)}.png")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        plt.savefig(f"{path}/{error_type_str}_genome_depth_iteration_{str(num_iteration)}.png")
+    except Exception as e:
+        print(f"Error saving plot: {e}")
+        print(f"Parameters: experiment_name={experiment_name}, num_iteration={num_iteration}, path={path}")
+    finally:
+        plt.close()  # Close the figure to free memory
 
 
 def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_prob, reference_genome, error_type_str,
@@ -379,8 +395,20 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
             plt.legend()
         else:
             print("Warning: No coverage values available. Check the alignment process.")
-        plt.savefig(f"{path}/{error_type_str}_contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
-        plt.close()
+        try:
+            # Ensure the directory exists before saving.
+            directory = os.path.dirname(
+                f"{path}/{error_type_str}_contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            plt.savefig(f"{path}/{error_type_str}_contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
+        except Exception as e:
+            print(f"Error saving plot: {e}")
+            print(
+                f"Parameters: contig_idx={contig_idx}, experiment_name={experiment_name}, num_iteration={num_iteration}, path={path}")
+        finally:
+            plt.close()  # Close the plot in the finally block.
 
 
 def calculate_essential_performance_measures(contigs, reads, num_reads, reads_length, error_prob, reference_genome,
@@ -408,10 +436,6 @@ def calculate_essential_performance_measures(contigs, reads, num_reads, reads_le
     - Mismatch Rate: Fraction of bases in contigs that mismatch the reference genome.
     - Reconstructed Genome Coverage: Plot of read coverage depth for each base in the assembled contigs.
     """
-    #experiment_folder = f"{path}/test_assembly/"
-    #os.makedirs(experiment_folder, exist_ok=True)
-    # experiments_folder = f"{path}/test_assembly"
-    # os.makedirs(experiments_folder, exist_ok=True)
 
     return {
         "Number of Contigs": len(contigs),
@@ -431,15 +455,3 @@ def calculate_essential_performance_measures(contigs, reads, num_reads, reads_le
         # Displays a plot
         # Contig Coverage - I expect that it will be similar to the one we started with (e.g. 10X and not 20X)
     }
-
-
-if __name__ == "__main__":
-    toy_genome = "ATGCGTACGTTAGC"
-    toy_contig = ['ATGCGTACGTTAGC','CCTTA']
-
-    mismatch_rate = calculate_mismatch_rate2(toy_contig, 5, toy_genome)
-    print(f"genome: {toy_genome}")
-    print(f"contigs: {toy_contig}")
-    print(f"Mismatch rate2: {mismatch_rate}")
-    mismatch_rate = calculate_mismatch_rate3(toy_contig, 5, toy_genome)
-    print(f"Mismatch rate3: {mismatch_rate}")
