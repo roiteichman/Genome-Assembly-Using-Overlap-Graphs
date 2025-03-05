@@ -183,14 +183,22 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
         tuple: A tuple containing the alignment, the score, start, and end positions of the alignment
         in the reference genome.
     """
-    if len(read_or_contig) < read_length:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-read_length:])
+    length_read_or_contig = len(read_or_contig)
+    if length_read_or_contig < read_length:
+        print(f"read_length: {read_length}")
+        print(f"read_or_contig: {read_or_contig}")
+        print(f"reference_genome[-{length_read_or_contig}:]: {reference_genome[-length_read_or_contig:]}")
+        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:])
         print(f"current_start: {start}")
         print(f"current_end: {end}")
-        start = len(reference_genome) - read_length + start
-        end = len(reference_genome) - read_length + end
+        start = len(reference_genome) - length_read_or_contig + start
+        end = len(reference_genome) - length_read_or_contig + end
         print(f"updated_start: {start}")
         print(f"updated_end: {end}")
     else:
         alignment, score, start, end = local_alignment(read_or_contig, reference_genome)
     return alignment, score, start, end
+
+
+if __name__ == "__main__":
+    a, s, st, en = align_read_or_contig_to_reference("ATGCG", "ATGCGTACGATGCGATGCGTACGATGCG", 41)
