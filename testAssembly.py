@@ -30,8 +30,7 @@ def test_assembly(genome, l, N, error_prob, experiment_name, num_iteration, path
     # Compute performance measures for error-prone assembly
     performance_error_prone = calculate_essential_performance_measures(contigs_error_prone, error_prone_reads,
                                                                        len(error_prone_reads), l, error_prob, genome,
-                                                                       "error_prone", experiment_name,
-                                                                       num_iteration, path)
+                                                                       experiment_name, num_iteration, path)
 
     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
     print(f"--- Error-Prone Reads Assembly ({experiment_name} - iteration: {num_iteration}) ---")

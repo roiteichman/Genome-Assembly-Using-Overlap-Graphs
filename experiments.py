@@ -1,138 +1,249 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from collections import defaultdict
-import pandas as pd
 import os
-import time
-from functools import partial
-from multiprocessing import Pool
-from generateErrorFreeReads import read_genome_from_fasta, generate_error_free_reads
-from generateErrorProneReads import generate_error_prone_reads
-from overlapGraphs import assemble_contigs_using_overlap_graphs
-from performanceMeasures import calculate_essential_performance_measures
+from generateErrorFreeReads import read_genome_from_fasta
 from testAssembly import test_assembly
+from plots import plot_experiment_results_by_p_values, plot_const_coverage_results, plot_coverage_comparison
+from createAndSave import save_results, create_paths, load_coverage_results_from_csv
+from collections import defaultdict
+import datetime
+
+# Constants
+lower_bound_l = 50
+upper_bound_l = 150
+lower_bound_n = 100
+upper_bound_n = 1000000
 
 
-def run_experiments(file_path="sequence.fasta"):
+def current_time():
+    """return the current time as a string"""
+
+    # Get the current time
+    now = datetime.datetime.now()
+
+    # Format the time as a string (e.g., "2023-10-27 10:30:45")
+    time_string = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    return time_string
+
+
+def run_experiments(file_path="sequence.fasta", path_to_save_csvs = "results", path_to_save_plots = "plots",
+                    path_to_logs = "logs.txt"):
     """
     Main function to run all experimentation scenarios.
 
     Parameters:
         file_path (str): Path to the FASTA file containing the reference genome.
+        path_to_save_csvs (str): Path to save the CSV result files.
+        path_to_save_plots (str): Path to save the plots.
 
     Returns:
         None (Saves results to files and generates plots)
     """
-    # Create directories for results if they don't exist
-    path_to_save_csvs = "results"
-    path_to_save_plots = "plots"
-    os.makedirs(path_to_save_csvs, exist_ok=True)
-    os.makedirs(path_to_save_plots, exist_ok=True)
-    paths = [path_to_save_csvs, path_to_save_plots]
 
-    # Read the reference genome from the FASTA file
-    #genome = read_genome_from_fasta(file_path) #TODO: uncomment this line
-    toy_genome = "ATGCGTACGTTAGCATGCGTACGTTAGC"  #TODO: remove this line
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    """""                           PREPARATIONS FOR THE EXPERIMENTS                           """""
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    with open(path_to_logs, "w") as f:
+        f.write(f"{current_time()} - Starting the experiments...\n")
+        # Read the reference genome from the FASTA file
+        genome = read_genome_from_fasta(file_path)
+        genome_length = len(genome)
+        error_probs = [0.001, 0.01, 0.05, 0.1]
+        small_l = 50
+        small_n = 100
 
-    genome_length = len(toy_genome)  #TODO: update this value
+        C_smaller_than_1 = ((small_l * small_n) / (genome_length))
+        C_smaller_than_1 = round(C_smaller_than_1, 3)
 
-    # Define common parameters
-    min_error_prob = 0.001
-    error_probs = [0.001, 0.01, 0.05, 0.1]
+        small_coverage_targets = [C_smaller_than_1, 3, 5, 7, 10]
+        large_coverage_targets = [15, 20, 30, 50]
+        total_coverage_targets = sorted(list(set(small_coverage_targets + large_coverage_targets)))
+        f.write(f"{current_time()} - total_coverage_targets: {total_coverage_targets}\n")
+        l_values = list(np.unique(np.linspace(lower_bound_l, upper_bound_l, 9).astype(int)))
+        f.write(f"{current_time()} - l_values: {l_values}\n")
+        n_value = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 9).astype(int))
+        f.write(f"{current_time()} - n_value: {n_value}\n")
+        paths_comparison = []
 
-    small_l = 5  #50 #TODO: update this value
-    large_l = 25  #150 #TODO: update this value
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        """""                       FIRST EXPERIMENT - VARYING COVERAGE TARGETS (C)                """""
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        # For fixed C we will find N and l that keep the number of reads and read length constant
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        print("Experiment #1 started!")
+        f.write(f"{current_time()} - Experiment #1 started!\n")
 
-    small_n = 25 #100 #TODO: update this value
-    large_n = 1000  #TODO: update this value
-
-    # calculate C for small n (50*100)/5386 = 0.93
-    c_smaller_than_1_small_n = ((small_l * small_n) / len(toy_genome))  # TODO: update to genome length
-
-    small_coverage_targets = [c_smaller_than_1_small_n, *list(range(2, 4))]  # TODO: update this value
-    large_coverage_targets = [*(list(range(10, 55, 15)))]  # TODO: update this value
-
-    # Calculate N values for different coverage depths
-    small_n_values_small_l = [int(np.ceil(coverage * genome_length / small_l)) for coverage in small_coverage_targets]
-    large_n_values_small_l = [int(np.ceil(coverage * genome_length / small_l)) for coverage in large_coverage_targets]
-
-    # Calculate l values for different coverage depths
-    small_l_values_small_n = sorted([int(np.ceil(coverage * genome_length / small_n))
-                                     for coverage in small_coverage_targets
-                                     if int(np.ceil(coverage * genome_length / small_n)) < large_l])
-    large_l_values_small_n = sorted([int(np.ceil(coverage * genome_length / small_n))
-                                     for coverage in large_coverage_targets
-                                     if int(np.ceil(coverage * genome_length / small_n)) < large_l])
-
-    # Calculate expected coverage
-    expected_coverage_small_n = [n * small_l / genome_length for n in small_n_values_small_l]
-    expected_coverage_large_n = [n * small_l / genome_length for n in large_n_values_small_l]
-
-    expected_coverage_small_l = [small_n * l / genome_length for l in small_l_values_small_n]
-    expected_coverage_large_l = [small_n * l / genome_length for l in large_l_values_small_n]
+        all_coverage_results = {}
+        for C in total_coverage_targets:
+            # Create paths for saving CSV files and plots
+            paths_c = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}"),
+                                    (path_to_save_plots, f"experiment_const_coverage/C_{C}")])
+            paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/comparison")])
 
 
-    # Verify N - small C
-    """experiment_varying_value(toy_genome, small_n_values_small_l, [small_l], [min_error_prob],
-                             expected_coverage_small_n, "experiment1_varying_N_small_range", paths)"""
+            all_coverage_results[C] = experiment_const_coverage(genome, C, error_probs, l_values=l_values, x_axis_var="l",
+                                                                experiment_name=f"experiment_const_coverage_{C}",
+                                                                paths=paths_c, return_results=True)
 
-    # Verify N - large C
-    """experiment_varying_value(toy_genome, large_n_values_small_l, [small_l], [min_error_prob],
-                             expected_coverage_small_n, "experiment1_varying_N_large_range", paths)"""
+        plot_coverage_comparison(all_coverage_results, path=paths_comparison[0])
+
+        print("Experiment #1 completed!")
+        f.write(f"{current_time()} - Experiment #1 completed!\n")
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        """""       SECOND EXPERIMENT - VARYING READS LENGTH FOR FIXED N AND FOR ALL C VALUES      """""
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        print(f"{current_time()} - Experiment #2 started!")
+
+        # Fixed N
+        result_vary_l = defaultdict(list)
+        for n in n_value:
+
+            paths_l = create_paths([(path_to_save_csvs, f"experiment_varying_l_fixed_n_{n}"),
+                                    (path_to_save_plots, f"experiment_varying_l_fixed_n_{n}")])
+            paths_comparison.insert(1, create_paths([(path_to_save_plots, f"experiment_varying_l_fixed_n_{n}/comparison")])[0])
+
+            median_l = int(l_values[len(l_values) // 2])
+
+            result_vary_l[n].append(experiment_varying_value(genome, [n], l_values, error_probs,
+                                                             expected_coverage=total_coverage_targets,
+                                                             experiment_name=f"experiment_varying_l_fixed_n_{n}",
+                                                             paths=paths_l, return_results=True, separator=median_l))
+
+        plot_coverage_comparison(result_vary_l, path=paths_comparison[1])
+        
+        print("Experiment #2 completed!")
+        f.write(f"{current_time()} - Experiment #2 completed!\n")
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        """""      THIRD EXPERIMENT - VARYING NUMBER OF READS FOR FIXED L AND FOR ALL C VALUES     """""
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        print("Experiment #3 started!")
+        f.write(f"{current_time()} - Experiment #3 started!\n")
+
+        # Fixed l
+        result_vary_n = defaultdict(list)
+        for l in l_values:
+
+            paths_n = create_paths([(path_to_save_csvs, f"experiment_varying_n_fixed_l_{l}"),
+                                    (path_to_save_plots, f"experiment_varying_n_fixed_l_{l}")])
+            paths_comparison.insert(2, create_paths([(path_to_save_plots, f"experiment_varying_n_fixed_l_{l}/comparison")])[0])
+
+            median_n = int(n_value[len(n_value) // 2])
+
+            result_vary_n[l].append(experiment_varying_value(genome, n_value, [l], error_probs,
+                                                             expected_coverage=total_coverage_targets,
+                                                             experiment_name=f"experiment_varying_n_fixed_l_{l}",
+                                                             paths=paths_n, return_results=True, separator=median_n))
+
+        plot_coverage_comparison(result_vary_n, path=paths_comparison[2])
+        
+        print("Experiment #3 completed!")
+        f.write(f"{current_time()} - Experiment #3 completed!\n")
+
+        # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
+
+        print("All experiments completed!")
+        f.write(f"{current_time()} - All experiments completed!\n")
 
 
-    # Verify l - small C
-    """experiment_varying_value(toy_genome, [small_n], small_l_values_small_n, [min_error_prob],
-                             expected_coverage_small_l, "experiment2_varying_l_small_range", paths)"""
+def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_values=None, l_values=None,
+                              x_axis_var="n", experiment_name="const_coverage", paths=None, num_iterations=5,
+                              log_scale=False, return_results=False):
+    """
+    Experiment: Vary N and l while keeping coverage constant.
+    Either n_values or l_values should be provided, and the other will be calculated.
+
+    Parameters:
+        reference_genome (str): Reference genome sequence.
+        coverage_target (float): Target coverage to maintain (e.g., 10X).
+        error_probs (list): List of p values to test.
+        n_values (list, optional): List of N values to test. If provided, l will be calculated.
+        l_values (list, optional): List of l values to test. If provided, N will be calculated.
+        x_axis_var (str): Variable to use on x-axis ('n' or 'l').
+        experiment_name (str): Name of the experiment.
+        paths (list): List of paths to save results and plots.
+        num_iterations (int): Number of iterations to run for each parameter combination.
+        log_scale (bool): Whether to use log scale for x-axis.
+        return_results (bool): Whether to return the results.
+
+    Returns:
+        None (Saves results to files and generates plots)
+    """
+    if paths is None:
+        paths = ["results", "plots"]
+
+    print(f"Running Experiment with Constant Coverage: {experiment_name}")
+
+    print(f"reference_genome: {reference_genome}")
+    values = l_values if x_axis_var == "l" else n_values
+    print(f"{x_axis_var}_values: {values}")
+    print(f"p_values: {error_probs}")
+    print(f"expected_coverage: {coverage_target}\n")
+
+    genome_length = len(reference_genome)
+
+    # Create parameter combinations
+    params = []  # list of dictionaries
+
+    # Calculate the dependent variable based on which one was provided
+    if n_values is not None and l_values is None:
+        # Calculate l values that maintain constant coverage for each n
+        l_values = [int(np.ceil(coverage_target * genome_length / n)) for n in n_values]
+        x_axis_var = "n"  # Force x_axis_var to match provided values
+    elif l_values is not None and n_values is None:
+        # Calculate n values that maintain constant coverage for each l
+        n_values = [int(np.ceil(coverage_target * genome_length / l)) for l in l_values]
+        x_axis_var = "l"  # Force x_axis_var to match provided values
+    else:
+        raise ValueError("Either n_values or l_values must be provided, but not both")
+
+    # Create a list of expected coverage values (should all be approximately the same)
+    expected_coverage = [n * l / genome_length for n, l in zip(n_values, l_values)]
+
+    for i, p in enumerate(error_probs):
+        for j, (n, l) in enumerate(zip(n_values, l_values)):
+            params.append({
+                'num_reads': n,
+                'read_length': l,
+                'error_prob': p,
+                'reference_genome': reference_genome,
+                'expected_coverage': expected_coverage[j],
+                'experiment_name': experiment_name
+            })
+
+    # Run simulations
+    results = run_simulations_num_iteration(params, num_iterations, path=paths[1])
+
+    # Save results
+    os.makedirs(paths[0], exist_ok=True)
+    save_results(results, experiment_name, path=paths[0])
+
+    # Plot results
+    plot_const_coverage_results(results, coverage_target=coverage_target, x_axis_var=x_axis_var, path=paths[1],
+                                log_scale=log_scale)
+
+    if return_results:
+        return results
 
 
-    # Verify l - large C
-    """experiment_varying_value(toy_genome, [small_n], large_l_values_small_n, [min_error_prob],
-                             expected_coverage_large_l, "experiment2_varying_l_large_range", paths)"""
-
-
-    # Verify p - small C
-    """experiment_varying_value(toy_genome, small_n_values_small_l, [small_l], error_probs,
-                             expected_coverage_small_n, "experiment3_varying_p_N_small_range", paths)"""
-
-    """experiment_varying_value(toy_genome, [small_n], small_l_values_small_n, error_probs,
-                             expected_coverage_small_l, "experiment3_varying_p_l_small_range", paths)"""
-
-    # Verify p - large C - TODO: update this value
-    """experiment_varying_value(toy_genome, large_n_values_small_l, [small_l], error_probs,
-                             expected_coverage_small_n, "experiment3_varying_p_N_large_range", paths)"""
-    # TODO: update this value
-    """experiment_varying_value(toy_genome, [small_n], large_l_values_small_n, error_probs,
-                                expected_coverage_large_l, "experiment3_varying_p_l_large_range", paths)"""
-
-
-    # TODO - more...
-
-    const_coverage_target = 10
-    n_values_const_coverage = [10, 56, 140] # TODO - update this value
-
-    # Verify N and l - constant C
-    experiment_const_coverage(toy_genome, const_coverage_target, error_probs, n_values_const_coverage,
-                              x_axis_var="n", experiment_name="experiment4_const_coverage", paths=paths)
-
-
-    print("All experiments completed!")
-
-
-def experiment_varying_value(reference_genome, n_values, l_values, p_values, expected_coverage,
-                             experiment_name, paths, num_iterations=5):
+def experiment_varying_value(reference_genome, n_values, l_values, p_values, expected_coverage, experiment_name, paths,
+                             num_iterations=5, log_scale=False, separator=None, return_results=False):
     """
     Experiment: Vary variable values to achieve different coverage depths.
 
     Parameters:
         reference_genome (str): Reference genome sequence.
-        n_values (list): List of N values to test.
-        l_values (list): List of l values to test.
+        n_values (list or ndarray): List of N values to test.
+        l_values (list or ndarray): List of l values to test.
         p_values (list): List of p values to test.
         expected_coverage (list): List of expected coverage values corresponding to N values.
         experiment_name (str): Name of the experiment.
         paths (list): List of paths to save results and plots.
         num_iterations (int): Number of iterations to run for each parameter combination.
+        log_scale (bool): Whether to use log scale for x-axis.
+        separator (int): an integer to separate for different plots if they smaller or bigger than it.
+        return_results (bool): Whether to return the results.
 
     Returns:
         None (Saves results to files and generates plots)
@@ -143,28 +254,11 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
     print(f"n_values: {n_values}")
     print(f"l_values: {l_values}")
     print(f"p_values: {p_values}")
-    print(f"expected_coverage: {expected_coverage}\n")
+    to_print = [round(c, 2) for c in expected_coverage]
+    print(f"expected_coverage: {to_print}\n")
 
     # Create parameter combinations
     params = []  # list of dictionaries
-
-    """
-    variable = None
-    labels = ["N (Number of Reads)", "l (Read Length)", "p (Error Probability)"]
-    label = None
-    x_keys = ["num_reads", "read_length", "error_prob"]
-    x_key = None
-
-    if len(p_values) > 1:
-        label = labels[0] if len(n_values) > 1 else labels[1]
-        x_key = x_keys[0] if len(n_values) > 1 else x_keys[1]
-    elif len(n_values) > 1:
-        label = labels[0]
-        x_key = x_keys[0]
-    elif len(l_values) > 1:
-        label = labels[1]
-        x_key = x_keys[1]
-    """
 
     for i, p in enumerate(p_values):
         for j, n in enumerate(n_values):
@@ -188,21 +282,20 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
     results = run_simulations_num_iteration(params, num_iterations, path=path_to_save_plots)
 
     # Save results
+    os.makedirs(path_to_save_csvs, exist_ok=True)
     save_results(results, experiment_name, path=path_to_save_csvs)
 
     # Plot results
-    #if len(p_values) > 1:
     if len(n_values) > 1:
         plot_experiment_results_by_p_values(results, x_key="num_reads",
                                             coverage_key="expected_coverage", path=path_to_save_plots,
-                                            num_iterations=num_iterations)
+                                            num_iterations=num_iterations, log_scale=log_scale, separator=separator)
     elif len(l_values) > 1:
         plot_experiment_results_by_p_values(results, x_key="read_length",
                                             coverage_key="expected_coverage", path=path_to_save_plots,
-                                            num_iterations=num_iterations)
-    #else:
-        #plot_experiment_results(results, label, experiment_name, x_key=x_key, coverage_key="expected_coverage",
-        #                        path=path_to_save_plots)
+                                            num_iterations=num_iterations, log_scale=log_scale, separator=separator)
+    if return_results:
+        return results
 
 
 def run_simulations_num_iteration(params_list, num_iterations=5, path="plots"):
@@ -286,693 +379,82 @@ def run_simulations(params_list, num_iteration, path="plots"):
     return results_error_prone
 
 
-def save_results(results, experiment_name, path="results"):
+def prepare_experiment_values(genome_length, coverage_target, fixed_value, varying_param='N', min_value=50,
+                              max_value=150):
     """
-    Save experiment results to a CSV file.
+    Prepare lists of N and l values for experiments based on coverage targets.
 
     Parameters:
-        results (list): List of result dictionaries.
-        experiment_name (str): Name of the experiment.
-        path (str): Path to save the results.
+    genome_length (int): Length of the genome.
+    coverage_target (int): coverage values target.
+    fixed_value (int): Fixed value for the parameter that is not varying.
+    varying_param (str): Parameter to vary ('N' or 'l').
+    min_value (int): Minimum value for the varying parameter.
+    max_value (int): Maximum value for the varying parameter.
 
     Returns:
-        None
+    list: List of values for the varying parameter.
     """
-    df = pd.DataFrame(results)
-
-    # Save full results
-    df.to_csv(f"{path}/{experiment_name}_results.csv", index=False)
-
-    # Save only the averaged results for easier analysis
-    df_filtered = df[
-        [col for col in df.columns if
-         "avg" in col or col in ["num_reads", "read_length", "error_prob", "expected_coverage"]]
-    ]
-    df_filtered.to_csv(f"{path}/{experiment_name}_summary.csv", index=False)
-
-    print(f"Results saved to {path}/{experiment_name}_results.csv")
-    print(f"Summary results saved to {path}/{experiment_name}_summary.csv")
-
-
-def plot_experiment_results(results, x_label, experiment_name, x_key="num_reads", coverage_key="expected_coverage",
-                            path="plots", log_scale=False):
-    """
-    Plot experiment results.
-
-    Parameters:
-        results (list): List of result dictionaries.
-        x_label (str): Label for x-axis.
-        experiment_name (str): Name of the experiment.
-        x_key (str): Dictionary key for x-axis values.
-        coverage_key (str): Dictionary key for coverage values or None.
-        path (str): Path to save the plots.
-        log_scale (bool): Whether to use logarithmic scale for x-axis.
-
-    Returns:
-        None
-    """
-    # Create dataframe from results
-    df = pd.DataFrame(results)
-
-    # Metrics to plot
-    metrics = ["Number of Contigs", "Genome Coverage", "N50", "Mismatch Rate"]
-    metric_labels = ["Number of Contigs", "Genome Coverage (%)", "N50", "Mismatch Rate"]
-
-    # Loop for both EF (error-free) and EP (error-prone) results
-    for error_type in ["EF", "EP"]:
-
-        error_type_str = "Error-Free" if error_type == "EF" else "Error-Prone"
-
-        # Create path for the experiment
-        full_path = f"{path}/{error_type_str}"
-        os.makedirs(full_path, exist_ok=True)
-
-        for include_raw in [True, False]:  # First plot without raw, then with
-            # Create figure with subplots
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            axes = axes.flatten()
-
-            # Plot each metric
-            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                ax = axes[i]
-
-                # Sort by x_key
-                df_sorted = df.sort_values(by=x_key)
-                x_values = df_sorted[x_key].values
-                # Extract metric values
-                metric_avg = df_sorted[f"{metric} ({error_type}) avg"].values
-                metric_std = df_sorted[f"{metric} ({error_type}) std"].values
-
-                if coverage_key:
-                    # Create labels with coverage information
-                    coverage_values = df_sorted[coverage_key].values
-                    x_labels = [f"{x}\n(C={c:.1f}x)" for x, c in zip(x_values, coverage_values)]
-                else:
-                    x_labels = [str(x) for x in x_values]
-
-                # Plot data
-                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-', label=f"{error_type_str}", capsize=5)
-
-                # Overlay raw data points if requested
-                if include_raw:
-                    raw_data = df_sorted[f"{metric} ({error_type}) raw"].values
-                    for j, raw_vals in enumerate(raw_data):
-                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals, alpha=0.7, color='gray', s=12,
-                                   label="Raw Data" if j == 0 else "")
-
-                # Set x-axis labels
-                ax.set_xticks(x_values)
-                ax.set_xticklabels(x_labels, rotation=45)
-
-                # Set y-axis to log scale if needed for better visualization
-                if metric == "num_contigs" or metric == "n50":
-                    ax.set_yscale('log')
-
-                # Set x-axis to log scale if requested
-                if log_scale:
-                    ax.set_xscale('log')
-
-                # Trend line
-                trend = np.polyfit(x_values, metric_avg, len(x_values) - 2)  # one degree below perfect fit
-                trend_y = np.polyval(trend, x_values)  # Compute trendline values
-
-                # Plot trend line
-                ax.plot(x_values, trend_y, 'k--', label=f"Trend Line")
-
-                # Add labels and title
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_label}")
-                ax.grid(True, alpha=0.3)
-
-                # Add legend
-                ax.legend()
-
-            # Adjust layout
-            plt.tight_layout()
-            suffix = "_with_raw" if include_raw else ""
-            # Save plot
-            plt.savefig(f"{full_path}/plot{suffix}.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"Plots saved to {full_path}/plot{suffix}.png")
-
-
-def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key="expected_coverage",
-                                        path="plots", log_scale=False, num_iterations=5):
-    """
-    Plot experiment results with x_key values as x-axis and different error probabilities as separate series.
-    Now includes individual plots for each p value with trend lines, and an average trend line for combined plots.
-
-    Parameters:
-        results (list): List of result dictionaries.
-        x_key (str): Dictionary key for x-axis values (typically "num_reads" or "read_length").
-        coverage_key (str): Dictionary key for coverage values or None.
-        path (str): Path to save the plots.
-        log_scale (bool): Whether to use logarithmic scale for x-axis.
-        num_iterations (int): Number of iterations to run for each parameter combination.
-
-    Returns:
-        None
-    """
-    # Create dataframe from results
-    df = pd.DataFrame(results)
-
-    # Get unique error probabilities and x values
-    p_values = sorted(df['error_prob'].unique())
-    x_values = sorted(df[x_key].unique())
-
-    # Metrics to plot
-    metrics = ["Number of Contigs", "Genome Coverage", "N50", "Mismatch Rate"]
-    metric_labels = ["Number of Contigs", "Genome Coverage (%)", "N50", "Mismatch Rate"]
-
-    # Colors for different p values
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    light_colors = ['#a6cee3', '#fdbf6f', '#b2df8a', '#fb9a99', '#cab2d6', '#d2b48c']
-
-    # Set x-axis label based on x_key
-    if x_key == "num_reads":
-        x_axis_label = "N (Number of Reads)"
-        fixed_param = "l (Read Length)"
-        fixed_param_key = "read_length"
-    elif x_key == "read_length":
-        x_axis_label = "l (Read Length)"
-        fixed_param = "N (Number of Reads)"
-        fixed_param_key = "num_reads"
-    else:
-        x_axis_label = x_key
-        fixed_param = "Parameter"
-        fixed_param_key = None
-
-    error_type_str = "Error-Prone"
-
-    # Create path for the experiment
-    full_path = f"{path}/{error_type_str}"
-    os.makedirs(full_path, exist_ok=True)
-
-    # Get the fixed parameter value (if it exists and is constant)
-    fixed_value = None
-    if fixed_param_key and len(df[fixed_param_key].unique()) == 1:
-        fixed_value = df[fixed_param_key].iloc[0]
-
-    # 1. Plot combined graph with all p values
-    for include_raw in [False, True]:
-        # Create figure with subplots
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        axes = axes.flatten()
-
-        # Add a descriptive suptitle to the figure
-        if fixed_value:
-            fig.suptitle(
-                f"Measures for fixed {fixed_param}={fixed_value} for different {x_axis_label} values and different p values",
-                fontsize=16, y=0.98)
+    values = []
+    if varying_param == 'N':
+        N = int(np.ceil(coverage_target * genome_length / fixed_value))
+        if min_value <= N <= max_value:
+            values.append(N)
+        elif N > max_value:
+            values.append("N>max")
         else:
-            fig.suptitle(f"Measures for different {x_axis_label} values and different p values",
-                         fontsize=16, y=0.98)
+            values.append("N<min")
+    elif varying_param == 'l':
+        l = int(np.ceil(coverage_target * genome_length / fixed_value))
+        if min_value <= l <= max_value:
+            values.append(l)
+        elif l > max_value:
+            values.append("l>max")
+        else:
+            values.append("l<min")
 
-        # Plot each metric
-        for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-            ax = axes[i]
-
-            # Data for average trend line
-            all_x = []
-            all_y = []
-
-            # For each error probability, plot a separate line
-            for p_idx, p in enumerate(p_values):
-                # Filter data for this p value
-                df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                if df_p.empty:
-                    continue
-
-                x_values = df_p[x_key].values
-                metric_avg = df_p[f"{metric} avg"].values
-                metric_std = df_p[f"{metric} std"].values
-
-                # Collect data for overall trend line
-                all_x.extend(x_values)
-                all_y.extend(metric_avg)
-
-                # Plot data with error bars
-                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                            label=f"p={p}", color=colors[p_idx % len(colors)],
-                            capsize=5, markersize=6)
-
-                # Overlay raw data points if requested
-                if include_raw:
-                    raw_data = df_p[f"{metric} raw"].values
-                    for j, raw_vals in enumerate(raw_data):
-                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
-                                   marker='o')
-
-            # Add coverage information to x-axis if available
-            if coverage_key:
-                # Get all unique x_value and coverage combinations
-                x_coverage_map = {}
-                for x in sorted(df[x_key].unique()):
-                    # Find corresponding coverage for this x value (should be same for all p)
-                    coverage = df[df[x_key] == x][coverage_key].iloc[0]
-                    x_coverage_map[x] = coverage
-
-                # Create x-tick labels with coverage info
-                x_ticks = sorted(x_coverage_map.keys())
-                x_labels = [f"{x}\n(C={x_coverage_map[x]:.1f}x)" for x in x_ticks]
-
-                ax.set_xticks(x_ticks)
-                ax.set_xticklabels(x_labels, rotation=45)
-
-            # Add average trend line if we have enough data points
-            if len(all_x) > 2:
-                # Sort by x for proper line plotting
-                sorted_indices = np.argsort(all_x)
-                sorted_x = np.array(all_x)[sorted_indices]
-                sorted_y = np.array(all_y)[sorted_indices]
-
-                # Fit a polynomial (degree = min(3, len(unique x) - 2)) - CHANGED FROM -1 to -2
-                degree = len(set(all_x)) - 2 if len(set(all_x)) - 2 > 0 else 3
-                if degree > 0:  # Need at least 2 points for a line
-                    trend = np.polyfit(sorted_x, sorted_y, degree)
-                    # Create more points for a smoother curve
-                    x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                    trend_y = np.polyval(trend, x_for_trend)
-                    ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Average Trend")
-
-            # Set x-axis to log scale if requested
-            if log_scale:
-                ax.set_xscale('log')
-
-            # Add labels and title
-            ax.set_xlabel(x_axis_label)
-            ax.set_ylabel(label)
-            ax.set_title(f"{label} vs. {x_axis_label}")
-            ax.grid(True, alpha=0.3)
-
-            # Add legend
-            ax.legend(title="Error Probability (p)", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        # Adjust layout
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.9)  # Make room for suptitle
-        suffix = "_with_raw" if include_raw else ""
-
-        # Save plot
-        output_path = f"{full_path}/plot_p_values{suffix}.png"
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"Combined plot saved to {output_path}")
-
-    # 2. Create individual plots for each p value
-    for p_idx, p in enumerate(p_values):
-        for include_raw in [False, True]:
-            # Create figure with subplots
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            axes = axes.flatten()
-
-            # Add a descriptive suptitle
-            if fixed_value:
-                fig.suptitle(
-                    f"Measures for fixed {fixed_param}={fixed_value}, p={p} for different {x_axis_label} values",
-                    fontsize=16, y=0.98)
-            else:
-                fig.suptitle(f"Measures for p={p} for different {x_axis_label} values",
-                             fontsize=16, y=0.98)
-
-            # Filter data for this p value
-            df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-            if df_p.empty:
-                continue
-
-            # Plot each metric
-            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                ax = axes[i]
-
-                # Get data
-                x_values = df_p[x_key].values
-                metric_avg = df_p[f"{metric} avg"].values
-                metric_std = df_p[f"{metric} std"].values
-
-                # Plot data with error bars
-                ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                            color=colors[p_idx % len(colors)],
-                            capsize=5, markersize=6)
-
-                # Overlay raw data points if requested
-                if include_raw:
-                    raw_data = df_p[f"{metric} raw"].values
-                    for j, raw_vals in enumerate(raw_data):
-                        ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                   alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
-
-                # Add coverage information to x-axis if available
-                if coverage_key:
-                    # Create x-tick labels with coverage info
-                    x_ticks = x_values
-                    x_labels = [f"{x}\n(C={df_p[df_p[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
-
-                    ax.set_xticks(x_ticks)
-                    ax.set_xticklabels(x_labels, rotation=45)
-
-                # Add trend line if we have enough points
-                if len(x_values) > 1:
-                    # For better trends, sort the values by x
-                    sorted_indices = np.argsort(x_values)
-                    sorted_x = np.array(x_values)[sorted_indices]
-                    sorted_y = np.array(metric_avg)[sorted_indices]
-
-                    # Calculate degree for polynomial fit - CHANGED FROM -1 to -2
-                    degree = len(set(x_values)) - 2 if len(set(x_values)) - 2 >  0 else  3  # At most cubic, at least linear if possible
-                    degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
-
-                    trend = np.polyfit(sorted_x, sorted_y, degree)
-                    x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                    trend_y = np.polyval(trend, x_for_trend)
-
-                    ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
-
-                # Set x-axis to log scale if requested
-                if log_scale:
-                    ax.set_xscale('log')
-
-                # Add labels and title
-                ax.set_xlabel(x_axis_label)
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_axis_label} (p={p}, {num_iterations} iterations)")
-                ax.grid(True, alpha=0.3)
-                if len(x_values) > 1:  # Only add legend if we have trend line
-                    ax.legend()
-
-            # Adjust layout
-            plt.tight_layout()
-            plt.subplots_adjust(top=0.9)  # Make room for suptitle
-            suffix = "_with_raw" if include_raw else ""
-
-            # Save plot
-            output_file = f"{full_path}/plot_p_value_{p}_by_{x_key}{suffix}.png"
-            plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"Individual plot saved to {output_file}")
+    return values
 
 
-def experiment_const_coverage(reference_genome, coverage_target, error_probs,
-                              n_values=None, l_values=None, x_axis_var="n",
-                              experiment_name="const_coverage", paths=None, num_iterations=5):
+def find_values(genome_length, coverage_targets, fixed_value, lower_bound, upper_bound, varying_param='N', num_values=5):
     """
-    Experiment: Vary N and l while keeping coverage constant.
-    Either n_values or l_values should be provided, and the other will be calculated.
+    The function finds the upper and lower bound for the varying parameter and its corresponding values.
 
     Parameters:
-        reference_genome (str): Reference genome sequence.
-        coverage_target (float): Target coverage to maintain (e.g., 10X).
-        error_probs (list): List of p values to test.
-        n_values (list, optional): List of N values to test. If provided, l will be calculated.
-        l_values (list, optional): List of l values to test. If provided, N will be calculated.
-        x_axis_var (str): Variable to use on x-axis ('n' or 'l').
-        experiment_name (str): Name of the experiment.
-        paths (list): List of paths to save results and plots.
-        num_iterations (int): Number of iterations to run for each parameter combination.
+    genome_length (int): Length of the genome.
+    coverage_targets (list): List of target coverage values.
+    fixed_value (int): Fixed value for the parameter that is not varying.
+    lower_bound (int): Lower bound for the varying parameter.
+    upper_bound (int): Upper bound for the varying parameter.
+    varying_param (str): Parameter to vary ('N' or 'l).
+    num_values (int): Number of values to generate.
 
     Returns:
-        None (Saves results to files and generates plots)
+    dict: Dictionary with new_lower_bound and new_upper_bound as keys and list of values for the varying parameter as value.
     """
-    if paths is None:
-        paths = ["results", "plots"]
+    best_lower_bound = 0
+    best_upper_bound = genome_length
+    best_values = None
 
-    print(f"Running Experiment with Constant Coverage: {experiment_name}")
+    for new_lower_bound in range(lower_bound, -1, -1):
 
-    genome_length = len(reference_genome)
+        # in case where the genome_length shorter than the upper_bound (varying_param=='l')
+        maximum_value = upper_bound if upper_bound > genome_length else genome_length
 
-    # Create parameter combinations
-    params = []  # list of dictionaries
+        for new_upper_bound in range(upper_bound, maximum_value + 1):
+            values = prepare_experiment_values(genome_length, coverage_targets, fixed_value,
+                                               varying_param=varying_param, min_value=new_lower_bound,
+                                               max_value=new_upper_bound, num_values=num_values)
+            print(f"coverage_targets: {coverage_targets}")
+            print(f"values: {values}")
+            numeric_values = [v for v in values if isinstance(v, int)]
+            print(f"numeric_values: {numeric_values}")
 
-    # Calculate the dependent variable based on which one was provided
-    if n_values is not None and l_values is None:
-        # Calculate l values that maintain constant coverage for each n
-        l_values = [int(np.ceil(coverage_target * genome_length / n)) for n in n_values]
-        x_axis_var = "n"  # Force x_axis_var to match provided values
-    elif l_values is not None and n_values is None:
-        # Calculate n values that maintain constant coverage for each l
-        n_values = [int(np.ceil(coverage_target * genome_length / l)) for l in l_values]
-        x_axis_var = "l"  # Force x_axis_var to match provided values
-    else:
-        raise ValueError("Either n_values or l_values must be provided, but not both")
+            if len(numeric_values)==num_values:
+                # the best value it those that thier upper_bound and lower_bound vary as low as possible from upper_bound and lower_bound respectively
+                return {(new_lower_bound, new_upper_bound): numeric_values}
 
-    # Create a list of expected coverage values (should all be approximately the same)
-    expected_coverage = [n * l / genome_length for n, l in zip(n_values, l_values)]
-
-    for i, p in enumerate(error_probs):
-        for j, (n, l) in enumerate(zip(n_values, l_values)):
-            params.append({
-                'num_reads': n,
-                'read_length': l,
-                'error_prob': p,
-                'reference_genome': reference_genome,
-                'expected_coverage': expected_coverage[j],
-                'experiment_name': experiment_name
-            })
-
-    # Create folders for the experiment
-    csvs_path = f"{paths[0]}/{experiment_name}"
-    os.makedirs(csvs_path, exist_ok=True)
-    plots_path = f"{paths[1]}/{experiment_name}"
-    os.makedirs(plots_path, exist_ok=True)
-
-    # Run simulations
-    results = run_simulations_num_iteration(params, num_iterations, path=plots_path)
-
-    # Save results
-    save_results(results, experiment_name, path=csvs_path)
-
-    # Plot results
-    plot_const_coverage_results(results,
-                                coverage_target=coverage_target,
-                                x_axis_var=x_axis_var,
-                                path=plots_path)
-
-
-def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="plots", num_iterations=5):
-    """
-    Plot experiment results with constant coverage but varying N and l.
-    Creates two sets of plots: one ordered by N and one ordered by l.
-
-    Parameters:
-        results (list): List of result dictionaries.
-        coverage_target (float): The target coverage value.
-        x_axis_var (str): Variable to use on x-axis ('n' or 'l') - used for naming only.
-        path (str): Path to save the plots.
-        num_iterations (int): Number of iterations run for each parameter combination.
-
-    Returns:
-        None
-    """
-    # Create dataframe from results
-    df = pd.DataFrame(results)
-
-    # Get unique error probabilities
-    p_values = sorted(df['error_prob'].unique())
-
-    # Metrics to plot
-    metrics = ["Number of Contigs", "Genome Coverage", "N50", "Mismatch Rate"]
-    metric_labels = ["Number of Contigs", "Genome Coverage (%)", "N50", "Mismatch Rate"]
-
-    # Colors for different p values
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    light_colors = ['#a6cee3', '#fdbf6f', '#b2df8a', '#fb9a99', '#cab2d6', '#d2b48c']
-
-    error_type_str = "Error-Prone"
-    # Create path for the experiment
-    full_path = f"{path}/{error_type_str}/coverage_{coverage_target:.1f}x"
-    os.makedirs(full_path, exist_ok=True)
-
-    # Generate both N-ordered and l-ordered plots
-    for primary_var in ['n', 'l']:
-        # Define keys based on which variable is primary
-        if primary_var == 'n':
-            x_key = 'num_reads'
-            x_label = "N (Number of Reads)"
-            y_key = 'read_length'
-            y_label = "l (Read Length)"
-        else:  # primary_var == 'l'
-            x_key = 'read_length'
-            x_label = "l (Read Length)"
-            y_key = 'num_reads'
-            y_label = "N (Number of Reads)"
-
-        # 1. Plot combined graph with all p values
-        for include_raw in [False, True]:
-            # Create figure with subplots
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            axes = axes.flatten()
-
-            # Add a descriptive suptitle
-            fig.suptitle(f"Measures with constant coverage C={coverage_target:.1f}x, ordered by {x_label}",
-                         fontsize=16, y=0.98)
-
-            # Plot each metric
-            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                ax = axes[i]
-
-                # Data for average trend line
-                all_x = []
-                all_y = []
-
-                # For each error probability, plot a separate line
-                for p_idx, p in enumerate(p_values):
-                    # Filter data for this p value
-                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                    if df_p.empty:
-                        continue
-
-                    # Get x values and corresponding y values
-                    x_values = df_p[x_key].values
-                    y_values = df_p[y_key].values
-                    metric_avg = df_p[f"{metric} avg"].values
-                    metric_std = df_p[f"{metric} std"].values
-
-                    # Collect data for overall trend line
-                    all_x.extend(x_values)
-                    all_y.extend(metric_avg)
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                label=f"p={p}", color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
-                                       marker='o')
-
-                # Create x-tick labels with the other variable values
-                x_ticks = sorted(df[x_key].unique())
-                x_labels = [f"{x}\n({y_label[0]}={df[df[x_key] == x][y_key].iloc[0]})" for x in x_ticks]
-
-                ax.set_xticks(x_ticks)
-                ax.set_xticklabels(x_labels, rotation=45)
-
-                # Add average trend line if we have enough data points
-                if len(all_x) > 2:
-                    # Sort by x for proper line plotting
-                    sorted_indices = np.argsort(all_x)
-                    sorted_x = np.array(all_x)[sorted_indices]
-                    sorted_y = np.array(all_y)[sorted_indices]
-
-                    # Fit a polynomial (degree = min(3, len(unique x) - 2)) - CHANGED FROM -1 to -2
-                    degree = min(3, len(set(all_x)) - 2)
-                    if degree > 0:  # Need at least 2 points for a line
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        # Create smooth x range for trend line
-                        x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                        trend_y = np.polyval(trend, x_for_trend)
-                        ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Average Trend")
-
-                # Add labels and title
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
-                ax.grid(True, alpha=0.3)
-
-                # Add legend
-                ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-            # Adjust layout
-            plt.tight_layout()
-            plt.subplots_adjust(top=0.9)  # Make room for suptitle
-            suffix = "_with_raw" if include_raw else ""
-
-            # Save plot
-            output_file = f"{full_path}/ordered_by_{primary_var}{suffix}.png"
-            plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"Plots saved to {output_file}")
-
-        # 2. Create individual plots for each p value
-        for p_idx, p in enumerate(p_values):
-            for include_raw in [False, True]:
-                # Create figure with subplots
-                fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-                axes = axes.flatten()
-
-                # Add a descriptive suptitle
-                fig.suptitle(f"Measures with constant coverage C={coverage_target:.1f}x, p={p}, ordered by {x_label}",
-                             fontsize=16, y=0.98)
-
-                # Filter data for this p value
-                df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                if df_p.empty:
-                    continue
-
-                # Plot each metric
-                for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                    ax = axes[i]
-
-                    # Get data
-                    x_values = df_p[x_key].values
-                    y_values = df_p[y_key].values
-                    metric_avg = df_p[f"{metric} avg"].values
-                    metric_std = df_p[f"{metric} std"].values
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
-
-                    # Create x-tick labels
-                    x_ticks = x_values
-                    x_labels = [f"{x}\n({y_label[0]}={y})" for x, y in zip(x_values, y_values)]
-
-                    ax.set_xticks(x_ticks)
-                    ax.set_xticklabels(x_labels, rotation=45)
-
-                    # Add trend line if we have enough points
-                    if len(x_values) > 1:
-                        # For better trends, sort the values by x
-                        sorted_indices = np.argsort(x_values)
-                        sorted_x = np.array(x_values)[sorted_indices]
-                        sorted_y = np.array(metric_avg)[sorted_indices]
-
-                        # Calculate degree for polynomial fit - CHANGED FROM -1 to -2
-                        degree = min(len(set(x_values)) - 2, 3)  # At most cubic, at least linear if possible
-                        degree = max(degree, 1)  # Ensure at least linear if we have 2+ points
-
-                        trend = np.polyfit(sorted_x, sorted_y, degree)
-                        x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-                        trend_y = np.polyval(trend, x_for_trend)
-
-                        ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
-
-                    # Add labels and title
-                    ax.set_xlabel(x_label)
-                    ax.set_ylabel(label)
-                    ax.set_title(
-                        f"{label} vs. {x_label} (p={p}, C={coverage_target:.1f}x, {num_iterations} iterations)")
-                    ax.grid(True, alpha=0.3)
-                    if len(x_values) > 1:  # Only add legend if we have trend line
-                        ax.legend()
-
-                # Adjust layout
-                plt.tight_layout()
-                plt.subplots_adjust(top=0.9)  # Make room for suptitle
-                suffix = "_with_raw" if include_raw else ""
-
-                # Save plot
-                output_file = f"{full_path}/ordered_by_{primary_var}_p_{p}{suffix}.png"
-                plt.savefig(output_file, dpi=300, bbox_inches='tight')
-                plt.close()
-                print(f"Individual plot saved to {output_file}")
+    return {(best_lower_bound, best_upper_bound): best_values}
 
 
 # Main function to run all experiments

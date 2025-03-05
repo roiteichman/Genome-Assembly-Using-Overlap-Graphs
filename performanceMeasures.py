@@ -174,7 +174,7 @@ def calculate_n50(contigs):
     return n50
 
 def calculate_essential_performance_measures(contigs, reads, num_reads, reads_length, error_prob, reference_genome,
-                                             error_type_str, experiment_name, num_iteration, path="plots"):
+                                             experiment_name, num_iteration, path="plots"):
     """
     Computes essential assembly quality metrics.
 
@@ -185,7 +185,6 @@ def calculate_essential_performance_measures(contigs, reads, num_reads, reads_le
         reads_length (int): Length of each read.
         error_prob (float): Probability of mutation in error-prone reads.
         reference_genome (str): The reference genome sequence.
-        error_type_str (str): Type of reads used for assembly (e.g., "error-free" or "error-prone").
         experiment_name (str): The name of the experiment.
         num_iteration (int): The number of the specific iteration.
     Returns:
@@ -206,14 +205,14 @@ def calculate_essential_performance_measures(contigs, reads, num_reads, reads_le
         "Mismatch Rate": calculate_mismatch_rate3(contigs, reads_length, reference_genome),
         # Wanted lower as posible, in average lower than p
         "Genome Coverage Plot": plot_genome_coverage(contigs, num_reads, reads_length, error_prob, reference_genome,
-                                                     error_type_str, experiment_name, num_iteration, path),
+                                                     experiment_name, num_iteration, path),
         # Displays a plot
-        "Genome Depth Plot": plot_genome_depth(reads, reference_genome, reads_length, error_prob, error_type_str,
-                                               experiment_name, num_iteration, path),
+        "Genome Depth Plot": plot_genome_depth(reads, reference_genome, reads_length, error_prob, experiment_name,
+                                               num_iteration, path),
         # Displays a plot
         "Reconstructed Genome Coverage": plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, error_prob,
-                                                                     reference_genome, error_type_str, experiment_name,
-                                                                     num_iteration, path)
+                                                                     reference_genome, experiment_name, num_iteration,
+                                                                     path)
         # Displays a plot
         # Contig Coverage - I expect that it will be similar to the one we started with (e.g. 10X and not 20X)
     }
