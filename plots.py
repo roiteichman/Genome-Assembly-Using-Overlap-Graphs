@@ -247,6 +247,34 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
 
 
 
+def save_results(results, experiment_name, path="results"):
+    """
+    Save experiment results to a CSV file.
+
+    Parameters:
+        results (list): List of result dictionaries.
+        experiment_name (str): Name of the experiment.
+        path (str): Path to save the results.
+
+    Returns:
+        None
+    """
+    df = pd.DataFrame(results)
+
+    # Save full results
+    df.to_csv(f"{path}/{experiment_name}_results.csv", index=False)
+
+    # Save only the averaged results for easier analysis
+    df_filtered = df[
+        [col for col in df.columns if
+         "avg" in col or col in ["num_reads", "read_length", "error_prob", "expected_coverage"]]
+    ]
+    df_filtered.to_csv(f"{path}/{experiment_name}_summary.csv", index=False)
+
+    print(f"Results saved to {path}/{experiment_name}_results.csv")
+    print(f"Summary results saved to {path}/{experiment_name}_summary.csv")
+
+
 def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key="expected_coverage",
                                         path="plots", log_scale=False, num_iterations=5):
     """
@@ -698,134 +726,138 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
     error_type_str = "Error-Prone"
     # Create path for the experiment
     full_path = f"{path}/{error_type_str}/coverage_{coverage_target:.1f}x"
-    os.makedirs(full_path, exist_ok=True)
+    try:
+        os.makedirs(full_path, exist_ok=True)
+    except OSError as e:
+        print(f"Error creating directory {full_path}: {e}")
+        return  # Return to prevent errors when trying to save plots.
 
     def plot_metric_data(x_key, y_key, x_label, y_label, lower_bound, upper_bound):
-        """
-        Internal function to handle plotting logic for metrics
+            """
+            Internal function to handle plotting logic for metrics
 
-        Parameters:
-            x_key: Key for x-axis values
-            y_key: Key for y-axis values
-            x_label: Label for x-axis
-            y_label: Label for y-axis
-            lower_bound: Lower boundary value
-            upper_bound: Upper boundary value
+            Parameters:
+                x_key: Key for x-axis values
+                y_key: Key for y-axis values
+                x_label: Label for x-axis
+                y_label: Label for y-axis
+                lower_bound: Lower boundary value
+                upper_bound: Upper boundary value
 
-        Returns:
-            None
-        """
-        # 1. Plot combined graph with all p values
-        for include_raw in [False, True]:
-            # Create figure with subplots
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            axes = axes.flatten()
-
-            # Check out-of-bounds status
-            x_values = sorted(df[x_key].unique())
-            out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
-
-            # Add a descriptive suptitle
-            fig.suptitle(
-                f"Measures with constant coverage C={coverage_target:.1f}x, {out_of_bounds_str}ordered by {x_label}",
-                fontsize=16, y=0.98)
-
-            # Plot each metric
-            for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
-                ax = axes[i]
-
-                # Data for average trend line
-                all_x, all_y = [], []
-
-                # For each error probability, plot a separate line
-                for p_idx, p in enumerate(p_values):
-                    # Filter data for this p value
-                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
-
-                    if df_p.empty:
-                        continue
-
-                    # Get x values and corresponding y values
-                    x_values = df_p[x_key].values
-                    y_values = df_p[y_key].values
-                    metric_avg = df_p[f"{metric} avg"].values
-                    metric_std = df_p[f"{metric} std"].values
-
-                    # Collect data for overall trend line
-                    all_x.extend(x_values)
-                    all_y.extend(metric_avg)
-
-                    # Plot data with error bars
-                    ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                label=f"p={p}", color=colors[p_idx % len(colors)],
-                                capsize=5, markersize=6)
-
-                    # Overlay raw data points if requested
-                    if include_raw:
-                        raw_data = df_p[f"{metric} raw"].values
-                        for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
-                                       marker='o')
-
-                # Create x-tick labels with the other variable values
-                x_ticks = sorted(df[x_key].unique())
-                x_labels = [f"{x}\n({y_label[0]}={df[df[x_key] == x][y_key].iloc[0]})" for x in x_ticks]
-
-                ax.set_xticks(x_ticks)
-                ax.set_xticklabels(x_labels, rotation=45)
-
-                # Add boundary lines if conditions are met
-                if lower_bound is not None or upper_bound is not None:
-                    add_boundary_lines(ax, x_values, lower_bound, upper_bound)
-
-                # Add average trend line if we have enough data points
-                add_average_trend_line(ax, all_x, all_y)
-
-                # Add labels and title
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
-                ax.grid(True, alpha=0.3)
-
-                # Add legend
-                ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-            # Adjust layout
-            plt.tight_layout()
-            plt.subplots_adjust(top=0.9)  # Make room for suptitle
-            suffix = "_with_raw" if include_raw else ""
-
-            # Save plot
-            output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png"
-            plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"Plots saved to {output_file}")
-
-        # 2. Individual p-value plots
-        for p_idx, p in enumerate(p_values):
+            Returns:
+                None
+            """
+            # 1. Plot combined graph with all p values
             for include_raw in [False, True]:
                 # Create figure with subplots
                 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
                 axes = axes.flatten()
 
                 # Check out-of-bounds status
-                x_values = sorted(df[df['error_prob'] == p][x_key].unique())
+                x_values = sorted(df[x_key].unique())
                 out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
 
                 # Add a descriptive suptitle
                 fig.suptitle(
-                    f"Measures with constant coverage C={coverage_target:.1f}x, p={p}, {out_of_bounds_str}ordered by {x_label}",
+                    f"Measures with constant coverage C={coverage_target:.1f}x, {out_of_bounds_str}ordered by {x_label}",
                     fontsize=16, y=0.98)
 
-                # Filter data for this p value
-                df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+                # Plot each metric
+                for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+                    ax = axes[i]
 
-                if df_p.empty:
-                    continue
+                    # Data for average trend line
+                    all_x, all_y = [], []
 
-                # Previous individual p-value plot implementation follows here...
-                # [Keeping the same implementation as before with boundary lines added]
+                    # For each error probability, plot a separate line
+                    for p_idx, p in enumerate(p_values):
+                        # Filter data for this p value
+                        df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+
+                        if df_p.empty:
+                            continue
+
+                        # Get x values and corresponding y values
+                        x_values = df_p[x_key].values
+                        y_values = df_p[y_key].values
+                        metric_avg = df_p[f"{metric} avg"].values
+                        metric_std = df_p[f"{metric} std"].values
+
+                        # Collect data for overall trend line
+                        all_x.extend(x_values)
+                        all_y.extend(metric_avg)
+
+                        # Plot data with error bars
+                        ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
+                                    label=f"p={p}", color=colors[p_idx % len(colors)],
+                                    capsize=5, markersize=6)
+
+                        # Overlay raw data points if requested
+                        if include_raw:
+                            raw_data = df_p[f"{metric} raw"].values
+                            for j, raw_vals in enumerate(raw_data):
+                                ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
+                                           alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
+                                           marker='o')
+
+                    # Create x-tick labels with the other variable values
+                    x_ticks = sorted(df[x_key].unique())
+                    x_labels = [f"{x}\n({y_label[0]}={df[df[x_key] == x][y_key].iloc[0]})" for x in x_ticks]
+
+                    ax.set_xticks(x_ticks)
+                    ax.set_xticklabels(x_labels, rotation=45)
+
+                    # Add boundary lines if conditions are met
+                    if lower_bound is not None or upper_bound is not None:
+                        add_boundary_lines(ax, x_values, lower_bound, upper_bound)
+
+                    # Add average trend line if we have enough data points
+                    add_average_trend_line(ax, all_x, all_y)
+
+                    # Add labels and title
+                    ax.set_xlabel(x_label)
+                    ax.set_ylabel(label)
+                    ax.set_title(f"{label} vs. {x_label} (C={coverage_target:.1f}x, {num_iterations} iterations)")
+                    ax.grid(True, alpha=0.3)
+
+                    # Add legend
+                    ax.legend(title="Error Probability", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+                # Adjust layout
+                plt.tight_layout()
+                plt.subplots_adjust(top=0.9)  # Make room for suptitle
+                suffix = "_with_raw" if include_raw else ""
+
+                # Save plot
+                output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png"
+                plt.savefig(output_file, dpi=300, bbox_inches='tight')
+                plt.close()
+                print(f"Plots saved to {output_file}")
+
+            # 2. Individual p-value plots
+            for p_idx, p in enumerate(p_values):
+                for include_raw in [False, True]:
+                    # Create figure with subplots
+                    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+                    axes = axes.flatten()
+
+                    # Check out-of-bounds status
+                    x_values = sorted(df[df['error_prob'] == p][x_key].unique())
+                    out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
+
+                    # Add a descriptive suptitle
+                    fig.suptitle(
+                        f"Measures with constant coverage C={coverage_target:.1f}x, p={p}, {out_of_bounds_str}ordered by {x_label}",
+                        fontsize=16, y=0.98)
+
+                    # Filter data for this p value
+                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+
+                    if df_p.empty:
+                        continue
+
+                    # Previous individual p-value plot implementation follows here...
+                    # [Keeping the same implementation as before with boundary lines added]
 
     # Generate both N-ordered and l-ordered plots
     plot_metric_data('num_reads', 'read_length',
@@ -839,29 +871,3 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                      lower_bound_l, upper_bound_l)
 
 
-def save_results(results, experiment_name, path="results"):
-    """
-    Save experiment results to a CSV file.
-
-    Parameters:
-        results (list): List of result dictionaries.
-        experiment_name (str): Name of the experiment.
-        path (str): Path to save the results.
-
-    Returns:
-        None
-    """
-    df = pd.DataFrame(results)
-
-    # Save full results
-    df.to_csv(f"{path}/{experiment_name}_results.csv", index=False)
-
-    # Save only the averaged results for easier analysis
-    df_filtered = df[
-        [col for col in df.columns if
-         "avg" in col or col in ["num_reads", "read_length", "error_prob", "expected_coverage"]]
-    ]
-    df_filtered.to_csv(f"{path}/{experiment_name}_summary.csv", index=False)
-
-    print(f"Results saved to {path}/{experiment_name}_results.csv")
-    print(f"Summary results saved to {path}/{experiment_name}_summary.csv")
