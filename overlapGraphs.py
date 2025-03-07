@@ -1,187 +1,217 @@
 import networkx as nx
-from aligners import overlap_alignment, local_alignment, align_read_or_contig_to_reference
+from aligners import overlap_alignment
 
 
-def construct_overlap_graph(reads):
+def construct_overlap_graph_nx(reads):
     """
-    Construct an overlap graph based on overlap alignment scores.
+    Construct an overlap graph based on overlap alignment scores using NetworkX.
 
     Parameters:
         reads (list): A list of DNA reads.
 
     Returns:
-        dict: A dictionary where keys are reads and values are lists of tuples
-              (neighboring_read, score, overlap_length).
+        nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
+                    represent overlaps with scores and end positions.
     """
-    overlap_graph = {}
-    # Compare all pairs of reads to find overlaps
-    for i, read_a in enumerate(reads):
-        overlap_graph[read_a] = []
-        for j, read_b in enumerate(reads):
-            if i != j:
-                # Use dynamic programming function to calculate the score and the length of the overlap alignment
-                print(f"aligning {read_a} and {read_b}")
+    read_copies = {}
+    for read in reads:
+        read_copies[read] = read_copies.get(read, 0) + 1
+
+    overlap_graph = nx.DiGraph()
+
+    # Add nodes to G and handle copies, e.g., read = "AAA" so nodes will be "AAA_0", "AAA_1", ... will be added
+    for read, count in read_copies.items():
+        for copy_index in range(count):
+            node_name = f"{read}_{copy_index}"
+            overlap_graph.add_node(node_name)
+
+    for read_a, count_a in read_copies.items():
+        for read_b, count_b in read_copies.items():
+            if read_a != read_b:
                 alignment, score, alignment_end_position = overlap_alignment(read_a, read_b)
-                print(f"alignment is: \n{alignment}\n")
-                print(f"score is: {score}")
-                print(f"alignment_end_position is: {alignment_end_position }")
-                overlap_graph[read_a].append((read_b, score, alignment_end_position ))
-    return overlap_graph
+                for copy_index_a in range(count_a):
+                    for copy_index_b in range(count_b):
+                        node_a_name = f"{read_a}_{copy_index_a}"
+                        node_b_name = f"{read_b}_{copy_index_b}"
+                        overlap_graph.add_edge(node_a_name, node_b_name, weight=score,
+                                               end_position=alignment_end_position)
+    return overlap_graph, read_copies
 
 
-def create_contig(start_read, overlap_graph, in_visited_reads, out_visited_reads, topo_order):
+def construct_overlap_graph_nx_k(reads, k=5):
+    """
+    Construct an overlap graph based on overlap alignment scores using NetworkX.
+
+    Parameters:
+        reads (list): A list of DNA reads.
+        k (int): The length of the k-mer prefix to use for filtering reads.
+
+    Returns:
+        nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
+                    represent overlaps with scores and end positions.
+    """
+    read_copies = {}
+    for read in reads:
+        read_copies[read] = read_copies.get(read, 0) + 1
+
+    overlap_graph = nx.DiGraph()
+
+    # Add nodes to G and handle copies, e.g., read = "AAA" so nodes will be "AAA_0", "AAA_1", ... will be added
+    for read, count in read_copies.items():
+        for copy_index in range(count):
+            node_name = f"{read}_{copy_index}"
+            overlap_graph.add_node(node_name)
+
+    # Build a prefix index: map from k-mer (prefix) to a list of (read, count)
+    prefix_index = {}
+    for read, count in read_copies.items():
+        if len(read) >= k:
+            prefix = read[:k]
+        else:
+            prefix = read # if read is shorter than k, use the whole read as prefix
+        if prefix not in prefix_index:
+            prefix_index[prefix] = []
+        prefix_index[prefix].append((read, count))
+
+    # For each read, check if its suffix k-mer is present in the prefix index
+    for read_a, count_a in read_copies.items():
+        if len(read_a) >= k:
+            suffix = read_a[-k:]
+        else:
+            suffix = read_a
+        # Only consider reads that share the same prefix
+        candidate_reads = prefix_index.get(suffix, [])
+        for read_b, count_b in candidate_reads:
+            # Avoid self-overlaps and overlaps between identical reads
+            if read_a != read_b:
+                alignment, score, alignment_end_position = overlap_alignment(read_a, read_b)
+                # For each copy of the reads, add an edge with the alignment score
+                for copy_index_a in range(count_a):
+                    for copy_index_b in range(count_b):
+                        node_a_name = f"{read_a}_{copy_index_a}"
+                        node_b_name = f"{read_b}_{copy_index_b}"
+                        overlap_graph.add_edge(node_a_name, node_b_name, weight=score,
+                                               end_position=alignment_end_position)
+    return overlap_graph, read_copies
+
+
+def create_contig(start_read, dag, visited, topo_order):
     """
     Create a contig using overlap alignment-based traversal while preserving the topological order.
 
     Parameters:
         start_read (str): The read to start from.
-        overlap_graph (dict): The overlap graph.
-        in_visited_reads (set): Reads that start a contig.
-        out_visited_reads (set): Reads already merged into a contig.
+        dag (nx.DiGraph): The overlap graph.
+        visited (set): Reads that start a contig.
         topo_order (dict): A mapping of reads to their position in the topological order.
 
     Returns:
         str: The assembled contig.
     """
-    print(f"start_read is: {start_read}")
-    print(f"overlap_graph is: {overlap_graph}")
-    print(f"in_visited_reads is: {in_visited_reads}")
-    print(f"out_visited_reads is: {out_visited_reads}")
-    print(f"topo_order is: {topo_order}")
-    contig = start_read
-    out_visited_reads.add(start_read)
+    # Initialize the contig with the start read
+    contig = start_read.split("_")[0]
+    visited.add(start_read.split("_")[0])
+    neighbors = list(dag.neighbors(start_read))
+    # Traverse the graph while preserving the topological order
+    while neighbors:
+        valid_neighbors = [neighbor for neighbor in neighbors if neighbor.split("_")[0] not in visited]
 
-    if start_read in overlap_graph:
-        while overlap_graph.get(start_read):
-            # Filter out reads that have already been visited
-            print(f"overlap_graph.get({start_read}): {overlap_graph.get(start_read)}")
-            print(f"overlap_graph[{start_read}]: {overlap_graph[start_read]}")
-            print(f"in_visited_reads is: {in_visited_reads}")
-            # get the reads that are not in in_visited_reads
-            valid_overlaps = [entry for entry in overlap_graph[start_read] if entry[0] not in in_visited_reads]
-            print(f"valid_overlaps is: {valid_overlaps}")
+        # If there are no valid neighbors, stop
+        if not valid_neighbors:
+            break
 
-            if not valid_overlaps:
-                break
+        # Select the next read based on topological order
+        next_read = min(valid_neighbors, key=lambda neighbor: topo_order.get(neighbor.split("_")[0], float('inf')))
+        alignment_end_position = dag.edges[start_read, next_read]['end_position']
+        # Merge the read based on overlap length
+        contig += next_read.split("_")[0][alignment_end_position:]
 
-            # Select the next read based on topological order
-            next_read = min(valid_overlaps, key=lambda x: topo_order.get(x[0], float('inf')))[0]
-            print(f"next_read: {next_read}")
-
-            # Merge the read based on overlap length
-            alignment_end_position = next((entry[2] for entry in valid_overlaps if entry[0] == next_read), 0)
-            print("**********")
-            print(f"contig: {contig}")
-            print(f"next_read: {next_read}, ")
-            print(f"alignment_end_position : {alignment_end_position }")
-            print(f"{next_read}[{alignment_end_position }:]: {next_read[alignment_end_position :]}")
-
-            contig += next_read[alignment_end_position:]
-            print(f"concated_contig: {contig}")
-            print("**********")
-            # Mark as visited and continue
-            in_visited_reads.add(next_read)
-            start_read = next_read
+        # Mark as visited and continue
+        start_read = next_read
+        neighbors = list(dag.neighbors(start_read))
 
     return contig
 
 
-def assemble_contigs_using_overlap_graphs(reads, genome, l):
+def remove_cycles_from_graph(overlap_graph):
+    """
+    Remove cycles from a directed overlap graph by removing the weakest edge (lowest overlap score)
+    until the graph becomes a DAG.
+
+    Parameters:
+        overlap_graph (nx.DiGraph): The directed overlap graph.
+
+    Returns:
+        nx.DiGraph: A DAG (Directed Acyclic Graph) with cycles removed.
+    """
+    G = overlap_graph
+
+    while not nx.is_directed_acyclic_graph(G):
+        cycles = list(nx.simple_cycles(G))
+        if not cycles:
+            break
+
+        edges_to_remove = []
+        for cycle in cycles:
+            weakest_edge = min((G[u][v]["weight"], u, v) for u, v in zip(cycle, cycle[1:] + [cycle[0]]))
+            edges_to_remove.append((weakest_edge[1], weakest_edge[2]))
+
+        for u, v in edges_to_remove:
+            if G.has_edge(u, v):  # Check if the edge still exists
+                G.remove_edge(u, v)
+
+    return G
+
+
+def topological_sort(dag):
+    """
+    Perform topological sorting on a DAG.
+
+    Parameters:
+        dag (nx.DiGraph): A directed acyclic graph (DAG).
+
+    Returns:
+        list: A topologically sorted list of reads.
+    """
+    try:
+        sorted_reads = list(nx.topological_sort(dag))
+        return sorted_reads
+    except nx.NetworkXUnfeasible:
+        raise ValueError("Graph is not a DAG! Cycles still exist.")
+
+
+def assemble_contigs_using_overlap_graphs(reads):
     """
     Assemble contigs using an overlap alignment graph with cycle removal and topological sorting.
 
     Parameters:
         reads (list): List of DNA reads.
-        genome (str): The reference genome sequence.
-        l (int): Read length.
 
     Returns:
         list: List of assembled contigs.
     """
 
     # Step 1: Construct the initial overlap graph
-    overlap_graph = construct_overlap_graph(reads)
-    print(f"overlap_graph is: {overlap_graph}")
-
+    overlap_graph, read_copies = construct_overlap_graph_nx(reads)
     # Step 2: remove and sort the graph
-    sorted_reads, sorted_graph = remove_and_sort(overlap_graph, reads, genome, l)
-    print(f"sorted_reads is: {sorted_reads}")
-    print(f"sorted_graph is: {sorted_graph}")
-
-    # Create a mapping of reads to their topological order index
-    topo_order = {read: idx for idx, read in enumerate(sorted_reads)}
-    print(f"topo_order is: {topo_order}")
+    dag = remove_cycles_from_graph(overlap_graph)
+    # Step 3: Sort the graph topologically
+    topo_order_with_copies = {node: i for i, node in enumerate(nx.topological_sort(dag))}
+    # Remove the copy index from the read and create a mapping of reads to their topological order index
+    topo_order = {}
+    for read_with_copy in topo_order_with_copies.keys():
+        read = read_with_copy.split("_")[0]
+        topo_order[read] = topo_order_with_copies[read_with_copy]
 
     # Step 4: Assemble contigs following the sorted order
-    in_visited_reads = set()
-    out_visited_reads = set()
+    visited = set()
     contigs = []
-
-    for read in sorted_reads:
-        print(f"read is: {read}")
-        print(f"in_visited_reads is: {in_visited_reads}")
-        print(f"out_visited_reads is: {out_visited_reads}")
-        if read not in in_visited_reads:
-            contig = create_contig(read, overlap_graph, in_visited_reads, out_visited_reads, topo_order)
-            contigs.append(contig)
-
+    for read in topo_order.keys():
+        if read not in visited:
+            for copy_index in range(read_copies[read]):
+                node_name = f"{read}_{copy_index}"
+                # Create a contig starting from the read
+                contig = create_contig(node_name, dag, visited, topo_order)
+                contigs.append(contig)
+                visited.add(read)
     return contigs
-
-
-def remove_and_sort(overlap_graph, reads, reference_genome, read_length):
-    """
-    Sorts the overlap graph topologically by determining read order and removing conflicting edges.
-
-    Parameters:
-        overlap_graph (dict): A dictionary where keys are reads and values are lists of tuples
-                              (neighboring_read, score, overlap_length).
-        reads (list): List of read sequences.
-        reference_genome (str): The reference genome sequence.
-        read_length (int): Length of each read.
-
-    Returns:
-        tuple: (sorted_reads, overlap_graph)
-        sorted_reads (list): A topologically sorted list of read sequences.
-        overlap_graph (dict): The updated overlap graph with conflicting edges removed.
-    """
-    orders = {}  # Dictionary to store read order
-
-    # Determine read order using local alignment
-    for read in reads:
-        print(f"\nalign read {read} to {reference_genome}")
-        alignment, score, start, end = align_read_or_contig_to_reference(read, reference_genome, read_length)
-        print(f"alignment is: {alignment}")
-        print(f"score is: {score}")
-        print(f"start is: {start}")
-        print(f"end is: {end}\n")
-        if start != -1:
-            orders[read] = start
-
-    # Sort reads based on their order in the reference genome
-    print(f"orders is: {orders}")
-    sorted_reads = sorted(orders.keys(), key=lambda r: orders[r])
-    print(f"sorted_reads is: {sorted_reads}")
-
-    # Remove edges that violate topological order
-    for read_a in sorted_reads:
-        if read_a in overlap_graph:
-            print("^^^^^^^^^^^^")
-            print(f"read_a is: {read_a}")
-            cpy = overlap_graph[read_a].copy()
-            print(f"overlap_graph[read_a] is: {overlap_graph[read_a]}")
-            overlap_graph[read_a] = [
-                (read_b, score, overlap_len)
-                for read_b, score, overlap_len in overlap_graph[read_a]
-                if read_b in orders and orders[read_a] < orders[read_b]
-            ]
-            removed = [entry for entry in cpy if entry not in overlap_graph[read_a]]
-            print(f"overlap_graph[read_a] is: {overlap_graph[read_a]}")
-            print(f"is removed: {cpy != overlap_graph[read_a]}")
-            print(f"removed is: {removed}")
-            print("^^^^^^^^^^^^")
-
-    # check if the graph is DAG
-    if not nx.is_directed_acyclic_graph(nx.DiGraph(overlap_graph)):
-        raise ValueError("Graph is not a DAG! Cycles still exist.")
-
-    return sorted_reads, overlap_graph
