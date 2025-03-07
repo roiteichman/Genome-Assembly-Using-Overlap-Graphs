@@ -3,7 +3,7 @@ from numba import njit
 
 
 @njit
-def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=-5):
+def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=float('-inf')):
     """
     Compute the best overlap alignment score between two sequences.
     Overhanging ends are not penalized.
@@ -76,12 +76,8 @@ def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=-5):
             align_t = t[j - 1] + align_t
             j -= 1
 
-    # Print the alignment
-    # print(f"\nTarget:   {align_t}\n          {'|' * len(align_t)}\nQuery:    {align_s}")
-
-    # return best_alignment, best_score, best_overlap_len
     best_alignment = f"\nTarget:   {align_t}\n          {'|' * len(align_t)}\nQuery:    {align_s}"
-    best_score = max_score
+    best_score = int(max_score)
     alignment_end_position = overlap_len
 
     return best_alignment, best_score, alignment_end_position
@@ -170,7 +166,7 @@ def local_alignment(query, reference, match_score=10, mismatch=-1, indel=-1):
     return best_alignment, best_score, start_pos, end_pos
 
 
-def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_length):
+def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_length, match_score=10, mismatch=-1, indel=-1):
     """
     Aligns a contig to a reference genome using local alignment.
 
@@ -178,6 +174,9 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
         read_or_contig (str): The read / contig sequence.
         reference_genome (str): The reference genome sequence.
         read_length (int): The length of the reads used for assembly.
+        match_score (int): Score for a matching base.
+        mismatch (int): Penalty for a mismatch.
+        indel (int): Penalty for an insertion/deletion (gap).
 
     Returns:
         tuple: A tuple containing the alignment, the score, start, and end positions of the alignment
@@ -185,20 +184,12 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
     """
     length_read_or_contig = len(read_or_contig)
     if length_read_or_contig < read_length:
-        print(f"read_length: {read_length}")
-        print(f"read_or_contig: {read_or_contig}")
-        print(f"reference_genome[-{length_read_or_contig}:]: {reference_genome[-length_read_or_contig:]}")
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:])
-        print(f"current_start: {start}")
-        print(f"current_end: {end}")
+        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:],
+                                                       match_score, mismatch, indel)
+
         start = len(reference_genome) - length_read_or_contig + start
         end = len(reference_genome) - length_read_or_contig + end
-        print(f"updated_start: {start}")
-        print(f"updated_end: {end}")
+
     else:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome)
+        alignment, score, start, end = local_alignment(read_or_contig, reference_genome, match_score, mismatch, indel)
     return alignment, score, start, end
-
-
-if __name__ == "__main__":
-    a, s, st, en = align_read_or_contig_to_reference("ATGCG", "ATGCGTACGATGCGATGCGTACGATGCG", 41)
