@@ -128,7 +128,7 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, refe
     - Mismatch Rate: Fraction of bases in contigs that mismatch the reference genome.
     - Reconstructed Genome Coverage: Plot of read coverage depth for each base in the assembled contigs.
     """
-
+    print(f"Calculating performance measures for {experiment_name} (Iteration {num_iteration})")
     contigs_alignment_details = {}
 
     for contig in contigs:

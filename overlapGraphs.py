@@ -13,6 +13,7 @@ def construct_overlap_graph_nx(reads):
         nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
                     represent overlaps with scores and end positions.
     """
+    print("Constructing overlap graph...")
     read_copies = {}
     for read in reads:
         read_copies[read] = read_copies.get(read, 0) + 1
@@ -50,6 +51,7 @@ def construct_overlap_graph_nx_k(reads, k=5):
         nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
                     represent overlaps with scores and end positions.
     """
+    print("Constructing overlap graph...")
     read_copies = {}
     for read in reads:
         read_copies[read] = read_copies.get(read, 0) + 1
@@ -108,6 +110,7 @@ def create_contig(start_read, dag, visited, topo_order):
     Returns:
         str: The assembled contig.
     """
+    print("Creating contig...")
     # Initialize the contig with the start read
     contig = start_read.split("_")[0]
     visited.add(start_read.split("_")[0])
@@ -144,6 +147,7 @@ def remove_cycles_from_graph(overlap_graph):
     Returns:
         nx.DiGraph: A DAG (Directed Acyclic Graph) with cycles removed.
     """
+    print("Removing cycles from graph...")
     G = overlap_graph
 
     while not nx.is_directed_acyclic_graph(G):
@@ -173,6 +177,7 @@ def topological_sort(dag):
     Returns:
         list: A topologically sorted list of reads.
     """
+    print("Sorting graph topologically...")
     try:
         sorted_reads = list(nx.topological_sort(dag))
         return sorted_reads

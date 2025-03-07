@@ -40,6 +40,7 @@ def generate_error_prone_reads(error_free_reads, error_prob):
     Returns:
         list: List of error-prone reads
     """
+    print("Generating error-prone reads...")
     alphabet = {"A": "CGT", "C": "AGT", "G": "ACT", "T": "ACG"}
     return [introduce_errors(read, error_prob, alphabet) for read in error_free_reads]
 
