@@ -179,14 +179,14 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
     """
     length_read_or_contig = len(read_or_contig)
     if length_read_or_contig < read_length:
-        alignment, score, start, end = local_alignment_biopython(read_or_contig, reference_genome[-length_read_or_contig:],
+        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:],
                                                        match_score, mismatch, indel)
 
         start = len(reference_genome) - length_read_or_contig + start
         end = len(reference_genome) - length_read_or_contig + end
 
     else:
-        alignment, score, start, end = local_alignment_biopython(read_or_contig, reference_genome, match_score, mismatch, indel)
+        alignment, score, start, end = local_alignment(read_or_contig, reference_genome, match_score, mismatch, indel)
     return alignment, score, start, end
 
 
