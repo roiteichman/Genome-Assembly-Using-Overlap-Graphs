@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit
+from Bio.Align import PairwiseAligner
 
 
 @njit
@@ -178,12 +179,79 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
     """
     length_read_or_contig = len(read_or_contig)
     if length_read_or_contig < read_length:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:],
+        alignment, score, start, end = local_alignment_biopython(read_or_contig, reference_genome[-length_read_or_contig:],
                                                        match_score, mismatch, indel)
 
         start = len(reference_genome) - length_read_or_contig + start
         end = len(reference_genome) - length_read_or_contig + end
 
     else:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome, match_score, mismatch, indel)
+        alignment, score, start, end = local_alignment_biopython(read_or_contig, reference_genome, match_score, mismatch, indel)
     return alignment, score, start, end
+
+
+def local_alignment_biopython(seq1, seq2, match=10, mismatch=-1, gap_open=-1, gap_extend=-1):
+    """
+    Perform local alignment and extract the best alignment info.
+
+    Args:
+        seq1 (str): First sequence.
+        seq2 (str): Second sequence.
+        match (int): Score for a match between characters in the sequences.
+        mismatch (int): Penalty for a mismatch.
+        gap_open (float): Penalty for opening a gap.
+        gap_extend (float): Penalty for extending a gap.
+
+    Returns:
+        tuple: (best_alignment, best_score, start_pos, end_pos)
+            - best_alignment: Tuple of aligned sequences (aligned_seq1, aligned_seq2).
+            - best_score: Highest local alignment score.
+            - start_pos: Start position of the alignment in the second sequence (seq2).
+            - end_pos: End position of the alignment in the second sequence (seq2).
+    """
+    # Initialize the aligner
+    aligner = PairwiseAligner()
+    aligner.mode = "local"  # Use local alignment mode
+    aligner.match_score = match
+    aligner.mismatch_score = mismatch
+    aligner.open_gap_score = gap_open
+    aligner.extend_gap_score = gap_extend
+
+    # Perform the alignment
+    alignments = aligner.align(seq1, seq2)
+    best_alignment = alignments[0]  # Best alignment object
+
+    # Extract aligned sequences
+    aligned_seq1 = best_alignment.target  # Aligned part of seq1 (target)
+    aligned_seq2 = best_alignment.query  # Aligned part of seq2 (query)
+
+    # Extract alignment score
+    best_score = best_alignment.score
+
+    # Extract alignment start and end positions
+    start_pos, end_pos = None, None
+    if best_alignment.aligned.any():  # Validate if alignment exists
+        start_pos = best_alignment.aligned[1][0][0]  # Start position in seq2
+        end_pos = best_alignment.aligned[1][-1][-1]  # End position in seq2
+
+    # Return aligned sequences, score, and positions
+    return (
+        (aligned_seq1, aligned_seq2),  # Aligned sequences
+        best_score,  # Best alignment score
+        start_pos,  # Start position in seq2
+        end_pos  # End position in seq2
+    )
+
+
+if __name__ == "__main__":
+    sequence1 = "GG"
+    sequence2 = "TACCGT"
+    a, b, c, d = local_alignment(sequence1, sequence2)
+
+    e, f, g, h = local_alignment_biopython(sequence1, sequence2)
+
+    print(f"a: {a}\n, b: {b}, c: {c}, d: {d}")
+
+    print("=========================")
+
+    print(f"e: {e}\n, f: {f}, g: {g}, h: {h}")
