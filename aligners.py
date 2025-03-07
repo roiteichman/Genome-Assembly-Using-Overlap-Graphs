@@ -22,15 +22,9 @@ def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=float('-inf')):
         alignment_end_position (int): End position of the alignment in the target sequence.
     """
     n, m = len(s), len(t)
-    dp = np.zeros((n + 1, m + 1), dtype=np.int64)
+    dp = np.zeros((n + 1, m + 1), dtype=np.int64) # No penalty for overhanging ends
 
     traceback = np.zeros((n + 1, m + 1), dtype=np.int64)  # Table for traceback
-
-    # Initialize DP table - Just for code readability
-    for i in range(1, n + 1):
-        dp[i][0] = 0  # No penalty for overhanging ends
-    for j in range(1, m + 1):
-        dp[0][j] = 0
 
     # Fill DP table
     for i in range(1, n + 1):
