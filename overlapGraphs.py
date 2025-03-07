@@ -158,7 +158,7 @@ def assemble_contigs_using_overlap_graphs(reads):
     """
 
     # Step 1: Construct the initial overlap graph
-    overlap_graph, read_copies = construct_overlap_graph_nx(reads)
+    overlap_graph, read_copies = construct_overlap_graph_nx_k(reads)
     # Step 2: remove and sort the graph
     dag = remove_cycles_from_graph(overlap_graph)
     # Step 3: Sort the graph topologically
