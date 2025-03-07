@@ -16,7 +16,7 @@ upper_bound_l = get_upper_bound_l()
 lower_bound_n = get_lower_bound_n()
 upper_bound_n = get_upper_bound_n()
 lower_bound_p = get_lower_bound_p()
-upper_bound_p = get_upper_bound_p
+upper_bound_p = get_upper_bound_p()
 
 
 def current_time():
@@ -61,7 +61,7 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
         f.write(f"{current_time()} - total_coverage_targets: {total_coverage_targets}\n")
         n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 5).astype(int))
         f.write(f"{current_time()} - n_value: {n_values}\n")
-        l_values = np.unique(np.linspace(lower_bound_n, upper_bound_n, 3).astype(int))
+        l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int))
         f.write(f"{current_time()} - l_values: {l_values}\n")
         error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
         f.write(f"{current_time()} - error_probs: {error_probs}\n")
