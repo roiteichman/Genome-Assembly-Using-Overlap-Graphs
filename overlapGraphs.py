@@ -2,43 +2,6 @@ import networkx as nx
 from aligners import overlap_alignment
 
 
-def construct_overlap_graph_nx(reads):
-    """
-    Construct an overlap graph based on overlap alignment scores using NetworkX.
-
-    Parameters:
-        reads (list): A list of DNA reads.
-
-    Returns:
-        nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
-                    represent overlaps with scores and end positions.
-    """
-    print("Constructing overlap graph...")
-    read_copies = {}
-    for read in reads:
-        read_copies[read] = read_copies.get(read, 0) + 1
-
-    overlap_graph = nx.DiGraph()
-
-    # Add nodes to G and handle copies, e.g., read = "AAA" so nodes will be "AAA_0", "AAA_1", ... will be added
-    for read, count in read_copies.items():
-        for copy_index in range(count):
-            node_name = f"{read}_{copy_index}"
-            overlap_graph.add_node(node_name)
-
-    for read_a, count_a in read_copies.items():
-        for read_b, count_b in read_copies.items():
-            if read_a != read_b:
-                alignment, score, alignment_end_position = overlap_alignment(read_a, read_b)
-                for copy_index_a in range(count_a):
-                    for copy_index_b in range(count_b):
-                        node_a_name = f"{read_a}_{copy_index_a}"
-                        node_b_name = f"{read_b}_{copy_index_b}"
-                        overlap_graph.add_edge(node_a_name, node_b_name, weight=score,
-                                               end_position=alignment_end_position)
-    return overlap_graph, read_copies
-
-
 def construct_overlap_graph_nx_k(reads, k=5):
     """
     Construct an overlap graph based on overlap alignment scores using NetworkX.
@@ -113,6 +76,7 @@ def create_contig(start_read, dag, visited, topo_order):
     print("Creating contig...")
     # Initialize the contig with the start read
     contig = start_read.split("_")[0]
+    # Mark the start read as visited
     visited.add(start_read.split("_")[0])
     neighbors = list(dag.neighbors(start_read))
     # Traverse the graph while preserving the topological order
@@ -129,7 +93,7 @@ def create_contig(start_read, dag, visited, topo_order):
         # Merge the read based on overlap length
         contig += next_read.split("_")[0][alignment_end_position:]
 
-        # Mark as visited and continue
+        # Continue traversal
         start_read = next_read
         neighbors = list(dag.neighbors(start_read))
 
@@ -150,19 +114,16 @@ def remove_cycles_from_graph(overlap_graph):
     print("Removing cycles from graph...")
     G = overlap_graph
 
-    while not nx.is_directed_acyclic_graph(G):
-        cycles = list(nx.simple_cycles(G))
-        if not cycles:
+    while True:
+        try:
+            # try to find a cycle in the graph
+            cycle = nx.find_cycle(G, orientation='original')
+        except nx.NetworkXNoCycle:
             break
-
-        edges_to_remove = []
-        for cycle in cycles:
-            weakest_edge = min((G[u][v]["weight"], u, v) for u, v in zip(cycle, cycle[1:] + [cycle[0]]))
-            edges_to_remove.append((weakest_edge[1], weakest_edge[2]))
-
-        for u, v in edges_to_remove:
-            if G.has_edge(u, v):  # Check if the edge still exists
-                G.remove_edge(u, v)
+        # Remove the weakest edge in the cycle
+        weakest_edge = min(((u, v, G[u][v]["weight"]) for u, v, _ in cycle), key=lambda x: x[2])
+        u, v, weight = weakest_edge
+        G.remove_edge(u, v)
 
     return G
 
@@ -218,5 +179,4 @@ def assemble_contigs_using_overlap_graphs(reads):
                 # Create a contig starting from the read
                 contig = create_contig(node_name, dag, visited, topo_order)
                 contigs.append(contig)
-                visited.add(read)
     return contigs
