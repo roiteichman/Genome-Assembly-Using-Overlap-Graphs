@@ -5,49 +5,35 @@ import numpy as np
 import pandas as pd
 import os
 from collections import defaultdict
-from aligners import align_read_or_contig_to_reference, local_alignment
+from aligners import align_read_or_contig_to_reference
+from consts import get_lower_bound_n, get_upper_bound_n, get_lower_bound_l, get_upper_bound_l
 
-lower_bound_l = 50
-upper_bound_l = 150
-lower_bound_n = 100
-upper_bound_n = 1000000
+lower_bound_l = get_lower_bound_l()
+upper_bound_l = get_upper_bound_l()
+lower_bound_n = get_lower_bound_n()
+upper_bound_n = get_upper_bound_n()
 
 
-def plot_genome_coverage(contigs, num_reads, read_length, error_prob, reference_genome, experiment_name,
-                         num_iteration, path):
+def plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path):
     """
     Plot coverage of the reference genome by assembled contigs.
 
     Parameters:
-        contigs (list): List of assembled contigs.
-        num_reads (int): Number of reads used for assembly.
-        read_length (int): Length of each read.
-        error_prob (float): Probability of mutation in error-prone reads.
-        reference_genome (str): The reference genome sequence.
+        coverage (np.array): Array of coverage values for each base in the reference genome.
+        genome_length (int): Length of the reference genome.
         experiment_name (str): The name of the experiment.
         num_iteration (int): The number of the specific iteration.
         path (str): The path to save the plots.
     Returns:
         None (Displays a plot)
     """
-    genome_length = len(reference_genome)
-    coverage = np.zeros(genome_length)  # Array to track coverage
 
-    for contig in contigs:
-        _, _, start, end = align_read_or_contig_to_reference(contig, reference_genome, read_length)
-
-        if start != -1 and end != -1:
-            for i in range(start, end):
-                coverage[i] += 1  # Mark covered regions
-
-    print("$$$$$$$$$$$$$$$$$$")
-    print(f"coverage: {coverage}")
-    print("$$$$$$$$$$$$$$$$$$")
+    coverage_boolean_np = coverage > 0
     positions = np.arange(genome_length)
 
     # Plot the coverage
     plt.figure(figsize=(10, 5))
-    plt.plot(positions, coverage, marker='o', linestyle='-', color='b')
+    plt.plot(positions, coverage_boolean_np, marker='o', linestyle='-', color='b')
     plt.xlabel("Genome Base Position")
     plt.ylabel("Coverage Count")
     plt.title(f"Genome Coverage by Assembled Contigs - {experiment_name} iteration: {str(num_iteration)}")
@@ -66,57 +52,29 @@ def plot_genome_coverage(contigs, num_reads, read_length, error_prob, reference_
         plt.close()  # Close the figure to free memory
 
 
-def plot_genome_depth(reads, reference_genome, read_length, error_prob, experiment_name,
-                      num_iteration, path):
+def plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path):
     """
     Plot genome coverage depth for each base in the reference genome.
 
     Parameters:
-        reads (list): List of sequencing reads.
-        reference_genome (str): The reference genome sequence.
-        read_length (int): Length of each read.
-        error_prob (float): Probability of mutation in error-prone reads.
+        coverage (np.array): Array of coverage values for each base in the reference genome.
+        expected_coverage (float): The expected coverage depth.
+        genome_length (int): Length of the reference genome.
         experiment_name (str): The name of the experiment.
         num_iteration (int): The number of the specific iteration.
         path (str): The path to save the plots.
     Returns:
         None (Displays a plot)
     """
-    genome_coverage = defaultdict(int)
-    alignment_cache = {}
-
-    for read in reads:
-        best_score = -float("inf")
-        best_start, best_end = -1, -1
-
-        score, start, end = -1, -1, -1
-
-        key = (read, reference_genome)
-
-        if key in alignment_cache:
-            score, start, end = alignment_cache[key]
-        else:
-            _, score, start, end = align_read_or_contig_to_reference(read, reference_genome, read_length)
-            alignment_cache[key] = (score, start, end)
-
-        if score > -float("inf") and start != -1 and end != -1:
-            best_start, best_end = start, end
-
-        if best_start != -1:
-            for i in range(best_start, best_end):
-                genome_coverage[i] += 1
-
-    positions = sorted(range(len(reference_genome)))
-    coverage_values = [genome_coverage[pos] for pos in positions]
+    positions = np.arange(genome_length)
 
     plt.figure(figsize=(10, 5))
-    plt.plot(positions, coverage_values, marker='o', linestyle='-')
+    plt.plot(positions, coverage, marker='o', linestyle='-')
     plt.xlabel("Genome Base Position")
     plt.ylabel("Read Coverage Depth")
     plt.title(f"Genome Coverage Depth - experiment {experiment_name} iteration: {str(num_iteration)}")
 
-    if len(coverage_values) > 0:
-        expected_coverage = len(reads) * read_length / len(reference_genome)
+    if len(coverage) > 0:
         plt.axhline(y=expected_coverage, color='g', linestyle='--', label="Expected Coverage")
         plt.legend()
     else:
@@ -134,17 +92,17 @@ def plot_genome_depth(reads, reference_genome, read_length, error_prob, experime
         plt.close()  # Close the figure to free memory
 
 
-def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_prob, reference_genome,
+def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, reference_genome,
                                 experiment_name, num_iteration, path):
     """
     Plot read coverage depth for each base in the assembled contigs.
+    This means the amount of reads that align to each base in the contigs.
 
     Parameters:
         contigs (list): List of assembled contigs.
         reads (list): List of sequencing reads.
         num_reads (int): Number of reads used for assembly.
         read_length (int): Length of each read.
-        error_prob (float): Probability of mutation in error-prone reads.
         reference_genome (str): The reference genome sequence.
         experiment_name (str): The name of the experiment.
         num_iteration (int): The number of the specific iteration.
@@ -154,7 +112,6 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
     """
     # Initialize a dictionary to store coverage depth for each base
     contig_coverages = {contig: defaultdict(float) for contig in contigs}  # Coverage per contig
-    alignment_cache = {}  # Initialize the alignment cache
 
     # Compute coverage depth for each base in the contigs using local alignment
     for read in reads:
@@ -167,18 +124,8 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
         for contig in contigs:
             key = (read, contig)
 
-            if key in alignment_cache:
-                # Retrieve the alignment from the cache
-                score, start, end = alignment_cache[key]
-
-            else:
-                # Calculate the alignment
-                alignment, score, start, end = local_alignment(read, contig)
-                print(f"alignment: {alignment}")
-                print(f"score: {score}")
-
-                # Store the alignment in the cache
-                alignment_cache[key] = (score, start, end)
+            # Calculate the alignment
+            alignment, score, start, end = align_read_or_contig_to_reference(read, contig, read_length)
 
             # Update the best contig based on the alignment score
             if score > best_score and start != -1 and end != -1:
@@ -200,7 +147,8 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
                 for i in range(best_start, best_end):
                     contig_coverages[best_contig][i] += coverage_increment
 
-    for contig_idx, (contig, coverage) in enumerate(contig_coverages.items()):
+    for contig_idx, contig in enumerate(contigs):
+        coverage = contig_coverages[contig] # get the data from the contig_coverages dict.
         # Convert dictionary to list for plotting
         positions = sorted(coverage.keys())
         coverage_values = [coverage[pos] for pos in positions]
@@ -214,14 +162,10 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
                   f"experiment {experiment_name} iteration: {str(num_iteration)}")
         if len(coverage_values) > 0:
             expected_coverage = num_reads * read_length / len(reference_genome)
-            print(f"expected_coverage: {expected_coverage}")
             plt.axhline(y=expected_coverage, color='g', linestyle='--', label="Expected Depth")
             # "expected depth" is the average depth across all bases in the genome (green line)
             expected_depth = sum(coverage_values) / len(coverage_values)
-            print(f"coverage_values: {coverage_values}")
-            print(f"sum(coverage_values): {sum(coverage_values)}")
-            print(f"len(coverage_values): {len(coverage_values)}")
-            print(f"expected_depth: {expected_depth}")
+
             plt.axhline(y=expected_depth, color='r', linestyle='--', label="Empirical Average Depth")
             # "empirical average depth" is the average coverage depth across all bases in the contig (red line)
             plt.legend()
@@ -237,8 +181,8 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, error_pr
             plt.savefig(f"{path}/contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
         except Exception as e:
             print(f"Error saving plot: {e}")
-            print(
-                f"Parameters: contig_idx={contig_idx}, experiment_name={experiment_name}, num_iteration={num_iteration}, path={path}")
+            print(f"Parameters: contig_idx={contig_idx}, experiment_name={experiment_name}, "
+                  f"num_iteration={num_iteration}, path={path}")
         finally:
             plt.close()  # Close the plot in the final block.
 
@@ -434,7 +378,6 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 print(f"Parameters: experiment_name={path[path.find('experiment'):]}, path={path}")
             finally:
                 plt.close() # Close the figure to free memory
-                print(f"Combined plot saved to {full_path}")
 
         # 2. Create individual plots for each p value
         for p_idx, p in enumerate(p_values):
@@ -521,7 +464,6 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                     print(f"Parameters: experiment_name={path[path.find('experiment'):]}, path={path}")
                 finally:
                     plt.close()  # Close the figure to free memory
-                    print(f"Individual plot saved to {full_path}")
 
     # Call plotting function for different x value sets
     # Iterate through x value sets
@@ -859,7 +801,6 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                 output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png"
                 plt.savefig(output_file, dpi=300, bbox_inches='tight')
                 plt.close()
-                print(f"Plots saved to {output_file}")
 
             # 2. Individual p-value plots
             for p_idx, p in enumerate(p_values):
@@ -950,7 +891,6 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     output_file = f"{full_path}/ordered_by_{x_axis_var}_p_{p}{suffix}.png"
                     plt.savefig(output_file, dpi=300, bbox_inches='tight')
                     plt.close()
-                    print(f"Individual plot saved to {output_file}")
 
     # Generate both N-ordered and l-ordered plots
     plot_metric_data('num_reads', 'read_length',
