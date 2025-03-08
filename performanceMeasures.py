@@ -29,8 +29,12 @@ def calculate_genome_coverage(contigs_alignment_details, reference_genome, expec
             # update teh covered_bases with the range of the contig
             coverage[start:end] += 1
 
-    plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path)
-    plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path)
+    if num_iteration != 1 and np.all(coverage == coverage[0]):
+        pass
+    elif num_iteration == 1:
+        # plot only the interesting cases
+        plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path)
+        plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path)
 
     coverage_rate = np.count_nonzero(coverage) / genome_length
 
