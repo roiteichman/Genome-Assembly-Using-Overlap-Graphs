@@ -324,7 +324,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                     ax.tick_params(axis='both', labelsize=18)
 
                 # Add average trend line
-                add_average_trend_line(ax, all_x, all_y)
+                add_average_trend_line(ax, all_x, all_y, log_scale=log_scale)
 
                 # Add legend
                 ax.legend(title="Error Probability (p)", loc='upper right', fontsize=16)
@@ -681,13 +681,15 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                      lower_bound, upper_bound)
 
 
-def plot_coverage_comparison(all_coverage_results, path="plots"):
+def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", log_scale=False):
     """
     Plot coverage comparison for different metrics and error probabilities.
 
     Parameters:
     - all_coverage_results: Dictionary with coverage results for different error probabilities.
+    - genome_length: The genome length which we covered C times.
     - path: Path to save the plots.
+    - log_scale: Whether to use log scale (default False)
 
     Returns:
     - None
@@ -723,8 +725,7 @@ def plot_coverage_comparison(all_coverage_results, path="plots"):
                             marker='o')
 
             # set up axis configurations
-            setup_plot_axis(ax, 'Coverage (int)', metric, label)
-
+            setup_plot_axis(ax, f'Coverage (C times {genome_length})', metric, label, log_scale=log_scale)
             ax.legend(loc='upper right', fontsize=12)
 
         plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -746,17 +747,11 @@ def plot_coverage_comparison(all_coverage_results, path="plots"):
                 x_values.append(C)
                 y_values.append(np.mean(means))
 
-            # Fit trend line
-            trend = np.polyfit(x_values, y_values, min(2, len(x_values) - 1))
-            trend_line = np.poly1d(trend)
-
             # Plot original points and trend line
             ax.scatter(x_values, y_values, label='Coverage Points')
-            x_smooth = np.linspace(min(x_values), max(x_values), 100)
-            ax.plot(x_smooth, trend_line(x_smooth), 'r--', label='Trend Line')
-
+            add_average_trend_line(ax, x_values, y_values, log_scale=log_scale)
             # set up axis configurations
-            setup_plot_axis(ax, 'Coverage (int)', metric, label)
+            setup_plot_axis(ax, f'Coverage (C times {genome_length})', metric, label, log_scale=log_scale)
 
             ax.legend(loc='upper right', fontsize=12)
 
