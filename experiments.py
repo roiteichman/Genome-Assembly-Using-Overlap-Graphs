@@ -6,7 +6,6 @@ from plots import plot_experiment_results_by_p_values, plot_const_coverage_resul
 from createAndSave import save_results, create_paths, load_coverage_results_from_csv
 from collections import defaultdict
 from consts import get_lower_bound_l, get_upper_bound_l, get_lower_bound_n, get_upper_bound_n, get_lower_bound_p, get_upper_bound_p
-import datetime
 from joblib import Parallel, delayed
 
 
@@ -17,18 +16,6 @@ lower_bound_n = get_lower_bound_n()
 upper_bound_n = get_upper_bound_n()
 lower_bound_p = get_lower_bound_p()
 upper_bound_p = get_upper_bound_p()
-
-
-def current_time():
-    """return the current time as a string"""
-
-    # Get the current time
-    now = datetime.datetime.now()
-
-    # Format the time as a string (e.g., "2023-10-27 10:30:45")
-    time_string = now.strftime("%Y-%m-%d %H:%M:%S")
-
-    return time_string
 
 
 def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", path_to_save_plots="plots",
@@ -49,100 +36,92 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     """""                           PREPARATIONS FOR THE EXPERIMENTS                           """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    with open(path_to_logs, "w") as f:
-        f.write(f"{current_time()} - Starting the experiments...\n")
-        # Read the reference genome from the FASTA file
-        genome = read_genome_from_fasta(file_path)
-        genome_length = len(genome)
+    # Read the reference genome from the FASTA file
+    genome = read_genome_from_fasta(file_path)
+    genome_length = len(genome)
 
-        c_smaller_than_1 = round(((lower_bound_n * lower_bound_l) / genome_length), 3)
+    c_smaller_than_1 = round(((lower_bound_n * lower_bound_l) / genome_length), 3)
 
-        total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30]
-        f.write(f"{current_time()} - total_coverage_targets: {total_coverage_targets}\n")
-        n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 5).astype(int))
-        f.write(f"{current_time()} - n_value: {n_values}\n")
-        l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int))
-        f.write(f"{current_time()} - l_values: {l_values}\n")
-        error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
-        f.write(f"{current_time()} - error_probs: {error_probs}\n")
-        paths_comparison = []
+    total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30]
+    # TODO - decide wheather upper_bound_n or 10,000 as biggest num + k of k-mers + num_iterations
+    n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 5).astype(int))
+    l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int))
+    error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
+    paths_comparison = []
 
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        """""                       FIRST EXPERIMENT - VARYING COVERAGE TARGETS (C)                """""
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        # For fixed C we will find N and l that keep the number of reads and read length constant
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        print("Experiment #1 started!")
-        f.write(f"{current_time()} - Experiment #1 started!\n")
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    """""                       FIRST EXPERIMENT - VARYING COVERAGE TARGETS (C)                """""
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    # For fixed C we will find N and l that keep the number of reads and read length constant
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    print("Experiment #1 started!")
 
-        all_coverage_results = {}
-        for C in total_coverage_targets:
-            # Create paths for saving CSV files and plots
-            paths_c = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}"),
-                                    (path_to_save_plots, f"experiment_const_coverage/C_{C}")])
-            paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/comparison")])
+    all_coverage_results = {}
+    for C in total_coverage_targets:
+        # Create paths for saving CSV files and plots
+        paths_c = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}"),
+                                (path_to_save_plots, f"experiment_const_coverage/C_{C}")])
+        paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/comparison")])
 
-            all_coverage_results[C] = experiment_const_coverage(genome, C, error_probs, l_values=l_values, x_axis_var="l",
-                                                                experiment_name=f"experiment_const_coverage_{C}",
-                                                                paths=paths_c, return_results=True)
+        all_coverage_results[C] = experiment_const_coverage(genome, C, error_probs, l_values=l_values, x_axis_var="l",
+                                                            experiment_name=f"experiment_const_coverage_{C}",
+                                                            paths=paths_c, return_results=True)
 
-        print("Experiment #1 completed!")
-        f.write(f"{current_time()} - Experiment #1 completed!\n")
+    print("Experiment #1 completed!")
 
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        """""       SECOND EXPERIMENT - VARYING READS LENGTH FOR FIXED N AND FOR ALL C VALUES      """""
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        print(f"{current_time()} - Experiment #2 started!")
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    """""       SECOND EXPERIMENT - VARYING READS LENGTH FOR FIXED N AND FOR ALL C VALUES      """""
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-        # Fixed N
-        result_vary_l = defaultdict(list)
-        for n in n_values:
+    print(f"{current_time()} - Experiment #2 started!")
 
-            paths_l = create_paths([(path_to_save_csvs, f"experiment_varying_l_fixed_n_{n}"),
-                                    (path_to_save_plots, f"experiment_varying_l_fixed_n_{n}")])
-            paths_comparison.insert(1, create_paths([(path_to_save_plots, f"experiment_varying_l_fixed_n_{n}/comparison")])[0])
+    # Fixed N
+    result_vary_l = defaultdict(list)
+    for n in n_values:
 
-            median_l = int(l_values[len(l_values) // 2])
+        paths_l = create_paths([(path_to_save_csvs, f"experiment_varying_l_fixed_n_{n}"),
+                                (path_to_save_plots, f"experiment_varying_l_fixed_n_{n}")])
+        paths_comparison.insert(1, create_paths([(path_to_save_plots, f"experiment_varying_l_fixed_n_{n}/comparison")])[0])
 
-            result_vary_l[n].append(experiment_varying_value(genome, [n], l_values, error_probs,
-                                                             expected_coverage=total_coverage_targets,
-                                                             experiment_name=f"experiment_varying_l_fixed_n_{n}",
-                                                             paths=paths_l, return_results=True, separator=median_l))
+        median_l = int(l_values[len(l_values) // 2])
 
-        print("Experiment #2 completed!")
-        f.write(f"{current_time()} - Experiment #2 completed!\n")
+        result_vary_l[n].append(experiment_varying_value(genome, [n], l_values, error_probs,
+                                                         expected_coverage=total_coverage_targets,
+                                                         experiment_name=f"experiment_varying_l_fixed_n_{n}",
+                                                         paths=paths_l, return_results=True, separator=median_l))
 
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        """""      THIRD EXPERIMENT - VARYING NUMBER OF READS FOR FIXED L AND FOR ALL C VALUES     """""
-        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        print("Experiment #3 started!")
-        f.write(f"{current_time()} - Experiment #3 started!\n")
+    print("Experiment #2 completed!")
 
-        # Fixed l
-        result_vary_n = defaultdict(list)
-        for l in l_values:
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    """""      THIRD EXPERIMENT - VARYING NUMBER OF READS FOR FIXED L AND FOR ALL C VALUES     """""
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-            paths_n = create_paths([(path_to_save_csvs, f"experiment_varying_n_fixed_l_{l}"),
-                                    (path_to_save_plots, f"experiment_varying_n_fixed_l_{l}")])
-            paths_comparison.insert(2, create_paths([(path_to_save_plots, f"experiment_varying_n_fixed_l_{l}/comparison")])[0])
+    print("Experiment #3 started!") #TODO - log_scale=True
 
-            median_n = int(n_values[len(n_values) // 2])
+    # Fixed l
+    result_vary_n = defaultdict(list)
+    for l in l_values:
 
-            result_vary_n[l].append(experiment_varying_value(genome, n_values, [l], error_probs,
-                                                             expected_coverage=total_coverage_targets,
-                                                             experiment_name=f"experiment_varying_n_fixed_l_{l}",
-                                                             paths=paths_n, return_results=True, separator=median_n))
+        paths_n = create_paths([(path_to_save_csvs, f"experiment_varying_n_fixed_l_{l}"),
+                                (path_to_save_plots, f"experiment_varying_n_fixed_l_{l}")])
+        paths_comparison.insert(2, create_paths([(path_to_save_plots, f"experiment_varying_n_fixed_l_{l}/comparison")])[0])
 
-        print("Experiment #3 completed!")
-        f.write(f"{current_time()} - Experiment #3 completed!\n")
+        median_n = int(n_values[len(n_values) // 2])
 
-        # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
-        plot_coverage_comparison(all_coverage_results, path=paths_comparison[0])
-        plot_coverage_comparison(result_vary_l, path=paths_comparison[1])
-        plot_coverage_comparison(result_vary_n, path=paths_comparison[2])
+        result_vary_n[l].append(experiment_varying_value(genome, n_values, [l], error_probs,
+                                                         expected_coverage=total_coverage_targets,
+                                                         experiment_name=f"experiment_varying_n_fixed_l_{l}",
+                                                         paths=paths_n, return_results=True, log_scale=True, 
+                                                         separator=median_n))
 
-        print("All experiments completed!")
-        f.write(f"{current_time()} - All experiments completed!\n")
+    print("Experiment #3 completed!")
+
+    # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
+    plot_coverage_comparison(all_coverage_results, path=paths_comparison[0]) #TODO - Adjust
+    #plot_coverage_comparison(result_vary_l, path=paths_comparison[1])
+    #plot_coverage_comparison(result_vary_n, path=paths_comparison[2])
+
+    print("All experiments completed!")
 
 
 def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_values=None, l_values=None,
@@ -433,7 +412,10 @@ def run_simulations_num_iteration_parallel(params_list, num_iterations=10, path=
 
     # Use all available cores (n_jobs=-1) to process the parameter combinations in parallel.
     results = Parallel(n_jobs=-1)(delayed(run_for_params)(params) for params in params_list)
+    # TODO - decide n_jobs
     return results
 
 if __name__ == "__main__":
+    todos_handled = False  # change to true when todos are handled.
+    assert todos_handled, "Handle TODOs - plot for iterations - to plot them or not"
     run_experiments("sequence.fasta")
