@@ -3,22 +3,23 @@ from aligners import align_read_or_contig_to_reference
 from plots import plot_genome_coverage, plot_genome_depth, plot_reconstructed_coverage
 
 
-def calculate_genome_coverage(contigs_alignment_details, genome_length, expected_coverage, experiment_name, num_iteration, path="plots"):
+def calculate_genome_coverage(contigs_alignment_details, reference_genome, expected_coverage, experiment_name, num_iteration, path="plots"):
     """
     Compute the percentage of genome bases covered by at least one contig.
 
     Parameters:
         contigs_alignment_details (dict): Dictionary of contig alignment details.
-        genome_length (int): Length of the reference genome.
+        reference_genome (str): The reference genome.
         expected_coverage (float): Expected coverage of the genome.
         experiment_name (str): The name of the experiment.
         num_iteration (int): The number of the specific iteration.
         path (str): Path to save the plot.
 
     Returns:
-        float: Genome coverage percentage.
+        tuple (float, float): Genome coverage rate and mismatch rate relative to the genome.
     """
 
+    genome_length = len(reference_genome)
     coverage = np.zeros(genome_length)
 
     for contig in contigs_alignment_details:
@@ -31,56 +32,60 @@ def calculate_genome_coverage(contigs_alignment_details, genome_length, expected
     plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path)
     plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path)
 
-    return np.count_nonzero(coverage) / genome_length
+    coverage_rate = np.count_nonzero(coverage) / genome_length
+
+    mismatch_rate_full_genome = calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_genome,
+                                                                    coverage)
+
+    return coverage_rate, mismatch_rate_full_genome
 
 
-def calculate_mismatch_rate(contigs_alignment_details, genome_length, match_score=10):
+def calculate_mismatch_rate_aligned_regions(contigs_alignment_details, reference_genome):
     """
-    Compute mismatch rate between contigs and genome.
+    Compute mismatch rate between contigs and genome at nucleotide level using vectorized comparisons.
 
-    The mismatch rate is the fraction of bases in contigs that mismatch the reference genome.
-
-    - If close to 0: The contigs are nearly identical to the reference genome.
-    - If close to 1: The contigs are highly different from the reference genome.
-    - Also considers uncovered bases in the genome as mismatches.
-    - Ignores redundant incorrect contigs if the genome is already fully reconstructed.
+    The mismatch rate is defined as:
+        min(1.0, max(0.0, (total mismatches / total aligned bases) * (total aligned bases / genome_length))
+    This gives a value between 0 and 1 representing the fraction of errors relative to the genome.
 
     Parameters:
         contigs_alignment_details (dict): Dictionary of contig alignment details.
-        genome_length (int): Length of the reference genome.
-        match_score (int): Score for a matching base.
+            Each entry should have "Start Position", "End Position", and "Alignment Score".
+        reference_genome (str): The original genome sequence.
 
     Returns:
         float: Mismatch rate.
     """
-    total_score = 0
-    optimal_score = genome_length * match_score
-    covered_bases = set()
+    genome_length = len(reference_genome)
+    total_mismatches = 0
+    total_aligned_bases = 0
 
-    # Track the best score for each genome base
-    best_coverage = {i: -float("inf") for i in range(genome_length)}
-
-    for contig in contigs_alignment_details:
-        start = contigs_alignment_details[contig]["Start Position"]
-        end = contigs_alignment_details[contig]["End Position"]
+    for contig, details in contigs_alignment_details.items():
+        start = details["Start Position"]
+        end = details["End Position"]
         if start != -1 and end != -1:
-            score = contigs_alignment_details[contig]["Alignment Score"]
-            total_score += score
-            # Update the best coverage scores for each base
-            for i in range(start, min(end, genome_length)):
-                best_coverage[i] = max(best_coverage[i], score)
+            aligned_length = end - start
+            total_aligned_bases += aligned_length
 
-            covered_bases.update(list(range(start, end)))  # Track covered genome positions
+            # Determine the aligned segments in contig and reference.
+            contig_aligned_seq = contig[max(0, -start): min(len(contig), len(contig) + (genome_length - end))]
+            reference_aligned_seq = reference_genome[max(0, start): min(genome_length, end)]
+            min_len = min(len(contig_aligned_seq), len(reference_aligned_seq))
+            if min_len > 0:
+                # Convert to numpy arrays for vectorized comparison.
+                contig_arr = np.array(list(contig_aligned_seq[:min_len]))
+                ref_arr = np.array(list(reference_aligned_seq[:min_len]))
+                mismatches = np.sum(contig_arr != ref_arr)
+            else:
+                mismatches = 0
+            total_mismatches += mismatches
 
-    # Check if the genome is perfectly reconstructed
-    if len(covered_bases) == genome_length and all(v >= match_score*genome_length
-                                                           for v in best_coverage.values()):
-        return 0.0  # The genome is fully reconstructed as one contig, no mismatches.
+    if total_aligned_bases == 0:
+        return 0.0  # Avoid division by zero if no bases are aligned
 
-    # Ensure mismatch rate is never negative
-    mismatch_rate = max((optimal_score - total_score) / optimal_score, 0.0)
-
-    return mismatch_rate
+    # Compute the per-base error and scale by the coverage fraction.
+    mismatch_rate = (total_mismatches / total_aligned_bases) * (total_aligned_bases / genome_length)
+    return min(1.0, max(0.0, mismatch_rate))
 
 
 def calculate_n50(contigs):
@@ -103,6 +108,51 @@ def calculate_n50(contigs):
             n50 = length
             break
     return n50
+
+
+def calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_genome, coverage):
+    """
+    Compute overall mismatch rate relative to the entire genome.
+
+    This function adds the number of uncovered bases (from the coverage vector)
+    as full errors to the mismatches in aligned regions, then divides by the genome length.
+
+    Parameters:
+      contigs_alignment_details (dict): Dictionary of contig alignment details.
+      reference_genome (str): The reference genome sequence.
+      coverage (np.ndarray): Coverage vector for each base in the genome.
+
+    Returns:
+      float: Mismatch rate relative to the full genome.
+    """
+    genome_length = len(reference_genome)
+    total_mismatches = 0
+    total_aligned_bases = 0
+
+    for contig, details in contigs_alignment_details.items():
+        start = details["Start Position"]
+        end = details["End Position"]
+        if start != -1 and end != -1:
+            aligned_length = end - start
+            total_aligned_bases += aligned_length
+            contig_aligned_seq = contig[max(0, -start): min(len(contig), len(contig) + (genome_length - end))]
+            reference_aligned_seq = reference_genome[max(0, start): min(genome_length, end)]
+            min_len = min(len(contig_aligned_seq), len(reference_aligned_seq))
+            if min_len > 0:
+                contig_arr = np.array(list(contig_aligned_seq[:min_len]))
+                ref_arr = np.array(list(reference_aligned_seq[:min_len]))
+                mismatches = np.sum(contig_arr != ref_arr)
+            else:
+                mismatches = 0
+            total_mismatches += mismatches
+
+    # Instead of subtracting, we count uncovered bases (where coverage == 0)
+    uncovered_bases = np.count_nonzero(coverage == 0)
+    # Add uncovered bases as full errors.
+    total_mismatches += uncovered_bases
+    mismatch_rate = total_mismatches / genome_length
+    return min(1.0, mismatch_rate)
+
 
 def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, reference_genome,
                                              experiment_name, num_iteration, path="plots"):
@@ -142,18 +192,23 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, refe
 
         expected_coverage = num_reads * reads_length / len(reference_genome)
 
-        plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, reference_genome,
-                                    experiment_name, num_iteration, path)
+        # TODO - run just for small amount of experiments because very computational heavy
+        """plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, reference_genome,
+                                    experiment_name, num_iteration, path)"""
+
+    genome_coverage, mismatch_rate_full_genome = calculate_genome_coverage(contigs_alignment_details, reference_genome, expected_coverage, experiment_name, num_iteration, path)
 
     return {
         "Number of Contigs": len(contigs),
-        "Genome Coverage": calculate_genome_coverage(contigs_alignment_details, len(reference_genome), expected_coverage, experiment_name, num_iteration, path),
+        "Genome Coverage": genome_coverage,
         "N50": calculate_n50(contigs),
-        "Mismatch Rate": calculate_mismatch_rate(contigs_alignment_details, reads_length),
+        "Mismatch Rate Aligned Regions": calculate_mismatch_rate_aligned_regions(contigs_alignment_details, reference_genome),
+        "Mismatch Rate Genome Level": mismatch_rate_full_genome,
     }
 
 
 if __name__ == "__main__":
+    """
     from generateErrorFreeReads import generate_error_free_reads
     from generateErrorProneReads import generate_error_prone_reads
     from overlapGraphs import assemble_contigs_using_overlap_graphs
@@ -162,3 +217,75 @@ if __name__ == "__main__":
     prone = generate_error_prone_reads(free, 0.1)
     contigs = assemble_contigs_using_overlap_graphs(prone)
     calculate_measures(contigs, prone, 1000, 50, 0.1, genome, "t1", 1)
+    """
+
+    """a = 'A' * 60
+    c = 'C' * 40
+
+    mistake = 'G' * 4
+
+    genome = a + c
+
+    match_score = 10
+    mismatch = -1
+
+    contigs_detail = {}  # initialize outside all loops
+
+    contig_a = ('A' * 56) + mistake
+    contig_b = mistake + ('C' * 36)
+
+
+    from aligners import align_read_or_contig_to_reference
+
+    align_a, score_a, start_a, end_a = align_read_or_contig_to_reference(contig_a+'H', genome, 50)
+    print(f"align_a: {align_a}\nscore_a: {score_a}\nstart_a: {start_a}\nend_a: {end_a}")
+    for letter in ['a', 'B', 'c', 'D', 'E', 'F', 'g', 'H', 'I', 'J', 'K', 'L', 'M']:
+        contigs_detail[contig_a+letter] = {
+            "Alignment Score": score_a,
+            "Start Position": start_a, "End Position": end_a}
+
+    align_b, score_b, start_b, end_b = align_read_or_contig_to_reference('N'+contig_b, genome, 50)
+    print(f"align_b: {align_b}\nscore_b: {score_b}\nstart_b: {start_b}\nend_b: {end_b}")
+    for letter in ['N', 'O', 'P', 'Q', 'R', 'S', 't', 'U', 'V', 'W', 'X', 'Y', 'Z']:
+        contigs_detail[letter+contig_b] = {
+            "Alignment Score": score_b,
+            "Start Position": start_b, "End Position": end_b}
+
+    print(f"genome: {genome}")
+    print(f"contigs: {contigs_detail.keys()}")
+
+    error_rate = calculate_mismatch_rate_nucleotide_level(contigs_detail, genome)
+
+    error_rate_v2 = calculate_mismatch_rate_nucleotide_level_v2(contigs_detail, genome)
+
+    error_rate3 = calculate_mismatch_rate3(contigs_detail, genome, 10)
+
+    error_rate3_v2 = calculate_mismatch_rate3_v2(contigs_detail, genome, 10)
+
+    print(error_rate)
+    print("=====")
+    print(error_rate3)
+
+    print("=====")
+
+    print(error_rate_v2)
+    print("=====")
+    print(error_rate3_v2)"""
+
+    genome = "ATGCGTACGTTAGCATGCGTACGTTAGC"
+
+    # generate 10 reads of length 5 of the genome
+    reads = [genome[i:i+5] for i in range(0, len(genome)-5)]
+    import random
+    # chose random 10 reads
+    reads = random.sample(reads, 10)
+    from overlapGraphs import assemble_contigs_using_overlap_graphs
+    contigs = ['ACGTTGCGT', 'TGCGT', 'TGCGT']#assemble_contigs_using_overlap_graphs(reads)
+
+    results = calculate_measures(contigs, reads, 10, 5, 0.1, genome, "t1", 1)
+
+    print(f"genome: {genome}")
+    print(f"contigs: {contigs}")
+    print(f"reads: {reads}")
+
+    print(results)
