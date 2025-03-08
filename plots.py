@@ -1,10 +1,9 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
-from collections import defaultdict
 from aligners import align_read_or_contig_to_reference
 from consts import get_lower_bound_n, get_upper_bound_n, get_lower_bound_l, get_upper_bound_l, get_metrics, get_metric_labels
 
