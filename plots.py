@@ -111,80 +111,59 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, referenc
         None (Displays a plot)
     """
     # Initialize a dictionary to store coverage depth for each base
-    contig_coverages = {contig: defaultdict(float) for contig in contigs}  # Coverage per contig
+    contig_lengths = {contig: len(contig) for contig in contigs}
+    contig_coverages = {contig: np.zeros(length, dtype=float) for contig, length in contig_lengths.items()}
 
-    # Compute coverage depth for each base in the contigs using local alignment
     for read in reads:
-        # use list of best_contigs for case of multiple contigs with the same score
+        best_score = -float('inf')
         best_contigs = []
-        best_score = -float("inf")
-        best_alignment = {}
 
-        # Find the best contig for each read
         for contig in contigs:
-            key = (read, contig)
-
-            # Calculate the alignment
             alignment, score, start, end = align_read_or_contig_to_reference(read, contig, read_length)
 
-            # Update the best contig based on the alignment score
             if score > best_score and start != -1 and end != -1:
-                # Start a new list of best contigs
-                best_contigs = [contig]
                 best_score = score
-                best_alignments = {contig: (start, end)}
-
-            # Another contig with the same score
+                best_contigs = [contig]
+                best_start, best_end = start, end
             elif score == best_score and start != -1 and end != -1:
-                best_contigs.append(contig)  # Add to existing list of best contigs
-                best_alignments[contig] = (start, end)
+                best_contigs.append(contig)
 
         if best_contigs:
-            # Increment coverage depth equally for all best contigs
-            coverage_increment = 1 / len(best_contigs)
-            for best_contig in best_contigs:
-                best_start, best_end = best_alignments[best_contig]
-                for i in range(best_start, best_end):
-                    contig_coverages[best_contig][i] += coverage_increment
+            chosen_contig = np.random.choice(best_contigs)
+            contig_coverages[chosen_contig][best_start:best_end] += 1
 
     for contig_idx, contig in enumerate(contigs):
-        coverage = contig_coverages[contig] # get the data from the contig_coverages dict.
-        # Convert dictionary to list for plotting
-        positions = sorted(coverage.keys())
-        coverage_values = [coverage[pos] for pos in positions]
+        coverage = contig_coverages[contig]
+        positions = np.arange(contig_lengths[contig])
 
-        # Plot the coverage depth
         plt.figure(figsize=(10, 5))
-        plt.plot(positions, coverage_values, marker='o', linestyle='-')
+        plt.plot(positions, coverage, marker='o', linestyle='-')
         plt.xlabel("Contig Base Position")
         plt.ylabel("Read Coverage Depth")
         plt.title(f"Read Coverage Depth for Contig {contig_idx + 1} - "
                   f"experiment {experiment_name} iteration: {str(num_iteration)}")
-        if len(coverage_values) > 0:
-            expected_coverage = num_reads * read_length / len(reference_genome)
-            plt.axhline(y=expected_coverage, color='g', linestyle='--', label="Expected Depth")
-            # "expected depth" is the average depth across all bases in the genome (green line)
-            expected_depth = sum(coverage_values) / len(coverage_values)
 
-            plt.axhline(y=expected_depth, color='r', linestyle='--', label="Empirical Average Depth")
-            # "empirical average depth" is the average coverage depth across all bases in the contig (red line)
+        if len(coverage) > 0:
+            expected_coverage = num_reads * read_length / len(reference_genome)
+            plt.axhline(y=expected_coverage, color='g', linestyle='--', label=f"Expected Depth")
+            expected_depth = float(np.mean(coverage))
+            plt.axhline(y=expected_depth, color='r', linestyle='--', label=f"Empirical Average Depth")
             plt.legend()
         else:
             print("Warning: No coverage values available. Check the alignment process.")
+
         try:
-            # Ensure the directory exists before saving.
             directory = os.path.dirname(
                 f"{path}/contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
             if not os.path.exists(directory):
                 os.makedirs(directory)
-
             plt.savefig(f"{path}/contig_coverage_{contig_idx + 1}_iteration_{str(num_iteration)}.png")
         except Exception as e:
             print(f"Error saving plot: {e}")
             print(f"Parameters: contig_idx={contig_idx}, experiment_name={experiment_name}, "
                   f"num_iteration={num_iteration}, path={path}")
         finally:
-            plt.close()  # Close the plot in the final block.
+            plt.close()
 
 
 def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key="expected_coverage",
