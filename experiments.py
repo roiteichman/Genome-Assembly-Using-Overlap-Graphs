@@ -73,7 +73,7 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     """""       SECOND EXPERIMENT - VARYING READS LENGTH FOR FIXED N AND FOR ALL C VALUES      """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-    print(f"{current_time()} - Experiment #2 started!")
+    print("Experiment #2 started!")
 
     # Fixed N
     result_vary_l = defaultdict(list)
