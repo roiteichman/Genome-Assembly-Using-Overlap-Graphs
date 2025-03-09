@@ -327,11 +327,14 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 add_average_trend_line(ax, all_x, all_y, log_scale=log_scale)
 
                 # Add legend
-                ax.legend(title="Error Probability (p)", loc='upper right', fontsize=16)
+                if i in [0,2]:
+                    ax.legend(title="Error Probability (p)", loc='upper left', fontsize=16)
+                elif i in [1,3,4]:
+                    ax.legend(title="Error Probability (p)", loc='lower right', fontsize=16)
 
             # Adjust layout
             plt.tight_layout(rect=[0, 0, 1, 0.95])
-            plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
+            plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
 
             is_raw = "_with_raw" if include_raw else ""
             # Create path for the experiment
@@ -413,7 +416,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
 
                 # Adjust layout
                 plt.tight_layout(rect=[0, 0, 1, 0.95])
-                plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
+                plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
 
                 # Create path for the experiment
                 full_path = f"{path}/{plot_type_suffix}/p_value_{p}/ordered_by_{x_key}_{is_raw}.png"
@@ -572,11 +575,15 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     add_average_trend_line(ax, all_x, all_y, log_scale)
 
                     # Add legend
+                    """if i in [0, 2]:
+                        ax.legend(title="Error Probability (p)", loc='upper left', fontsize=16)
+                    elif i in [1, 3, 4]:
+                        ax.legend(title="Error Probability (p)", loc='lower right', fontsize=16)"""
                     ax.legend(title="Error Probability", loc='upper right', fontsize=12)
 
                 # Adjust layout
                 plt.tight_layout(rect=[0, 0, 1, 0.95])
-                plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
+                plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
                 suffix = "_with_raw" if include_raw else ""
 
                 # Save plot
@@ -658,10 +665,15 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                         # Add legend if we have trend line
                         if len(x_values) > 1:
                             ax.legend(loc='upper right', fontsize=12)
+                            """# Add legend
+                            if i in [0, 2]:
+                                ax.legend(title="Error Probability (p)", loc='upper left', fontsize=16)
+                            elif i in [1, 3, 4]:
+                                ax.legend(title="Error Probability (p)", loc='lower right', fontsize=16)"""
 
                     # Adjust layout
                     plt.tight_layout(rect=[0, 0, 1, 0.95])
-                    plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
+                    plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
                     suffix = "_with_raw" if include_raw else ""
 
                     # Save plot
@@ -839,20 +851,25 @@ def add_average_trend_line(ax, all_x, all_y, log_scale=False):
         sorted_x = np.array(all_x)[sorted_indices]
         sorted_y = np.array(all_y)[sorted_indices]
 
-        # Fit a polynomial (degree = min(3, len(unique x) - 2))
         degree = min(2, len(set(all_x)) - 1) if len(set(all_x)) - 1 > 0 else 1
-        if degree > 0:  # Need at least 2 points for a line
+        if degree > 0:
             if log_scale:
-                # Avoid negative values for log scale
-                sorted_x = [x if x > 0 else 1 for x in sorted_x]
-                trend = np.polyfit(np.log(sorted_x), sorted_y, degree)
-                x_for_trend = np.logspace(np.log(min(sorted_x)), np.log(max(sorted_x)), 100)
+                # Use log1p to handle potential zero values
+                sorted_x_log = np.log1p(sorted_x)
+                trend = np.polyfit(sorted_x_log, sorted_y, degree)
+
+                # Generate x values for the trend line in the original scale
+                x_for_trend = np.linspace(min(sorted_x_log), max(sorted_x_log), 100)
+                # Transform back to the original scale
+                x_for_trend_original = np.expm1(x_for_trend)
+                trend_y = np.polyval(trend, x_for_trend)
+
+                ax.plot(x_for_trend_original, trend_y, 'k--', linewidth=2, label="Average Trend")
             else:
                 trend = np.polyfit(sorted_x, sorted_y, degree)
-                # Create more points for a smoother curve
                 x_for_trend = np.linspace(min(sorted_x), max(sorted_x), 100)
-            trend_y = np.polyval(trend, x_for_trend)
-            ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Average Trend")
+                trend_y = np.polyval(trend, x_for_trend)
+                ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Average Trend")
 
 
 def generate_x_tick_labels(df, x_key, coverage_key):
