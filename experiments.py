@@ -207,8 +207,8 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_
         return results
 
 
-def experiment_varying_value(reference_genome, n_values, l_values, p_values, expected_coverage, experiment_name, paths,
-                             num_iterations=10, log_scale=False, separator=None, return_results=False):
+def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_values, expected_coverage, experiment_name, paths,
+                             num_iterations=10, log_scale=False, separator=None, return_results=False, grouping_value='error_prob'):
     """
     Experiment: Vary variable values to achieve different coverage depths.
 
@@ -217,6 +217,7 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
         n_values (np.array): List of N values to test.
         l_values (np.array): List of l values to test.
         p_values (np.array): List of p values to test.
+        k_values (np.array): List of k values to test (for k-mers).
         expected_coverage (list): List of expected coverage values corresponding to N values.
         experiment_name (str): Name of the experiment.
         paths (list): List of paths to save results and plots.
@@ -224,6 +225,7 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
         log_scale (bool): Whether to use log scale for x-axis.
         separator (int): an integer to separate for different plots if they smaller or bigger than it.
         return_results (bool): Whether to return the results.
+        grouping_value (str): Group the results by 'error_prob' or 'k'.
 
     Returns:
         None (Saves results to files and generates plots)
@@ -234,6 +236,7 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
     print(f"n_values: {n_values}")
     print(f"l_values: {l_values}")
     print(f"p_values: {p_values}")
+    print(f"k_values: {k_values}")
     to_print = [round(c, 2) for c in expected_coverage]
     print(f"expected_coverage: {to_print}\n")
 
@@ -242,38 +245,36 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, exp
 
     for i, p in enumerate(p_values):
         for j, n in enumerate(n_values):
-            for k, l in enumerate(l_values):
-                params.append({
-                    'num_reads': n,
-                    'read_length': l,
-                    'error_prob': p,
-                    'reference_genome': reference_genome,
-                    'expected_coverage': expected_coverage[j] if len(n_values) > 1 else expected_coverage[k],
-                    'experiment_name': experiment_name
-                })
+            for m, l in enumerate(l_values):
+                for s, k in enumerate(k_values):
+                    params.append({
+                        'num_reads': n,
+                        'read_length': l,
+                        'error_prob': p,
+                        'k' : k,
+                        'reference_genome': reference_genome,
+                        'expected_coverage': expected_coverage[j] if len(n_values) > 1 else expected_coverage[m],
+                        'experiment_name': experiment_name
+                    })
 
-    # Create folders for the experiment
-    path_to_save_csvs = f"{paths[0]}/{experiment_name}"
-    os.makedirs(path_to_save_csvs, exist_ok=True)
-    path_to_save_plots = f"{paths[1]}/{experiment_name}"
-    os.makedirs(path_to_save_plots, exist_ok=True)
 
     # Run simulations
-    results = run_simulations_num_iteration_parallel(params, num_iterations, path=path_to_save_plots)
+    results = run_simulations_num_iteration_parallel(params, num_iterations, path=paths[1], grouping_value=grouping_value)
 
     # Save results
-    os.makedirs(path_to_save_csvs, exist_ok=True)
-    save_results(results, experiment_name, path=path_to_save_csvs)
+    save_results(results, experiment_name, path=paths[0])
 
     # Plot results
     if len(n_values) > 1:
-        plot_experiment_results_by_p_values(results, x_key="num_reads",
-                                            coverage_key="expected_coverage", path=path_to_save_plots,
-                                            num_iterations=num_iterations, log_scale=log_scale, separator=separator)
+        plot_experiment_results_by_other_values(results, x_key="num_reads", coverage_key="expected_coverage",
+                                                path=paths[1], log_scale=log_scale,
+                                                num_iterations=num_iterations, separator=separator,
+                                                other_value_key=grouping_value)
     elif len(l_values) > 1:
-        plot_experiment_results_by_p_values(results, x_key="read_length",
-                                            coverage_key="expected_coverage", path=path_to_save_plots,
-                                            num_iterations=num_iterations, log_scale=log_scale, separator=separator)
+        plot_experiment_results_by_other_values(results, x_key="read_length", coverage_key="expected_coverage",
+                                                path=paths[1], log_scale=log_scale,
+                                                num_iterations=num_iterations, separator=separator,
+                                                other_value_key=grouping_value)
     if return_results:
         return results
 
@@ -349,7 +350,7 @@ def run_simulations(params_list, num_iteration, path="plots"):
 
     for params in params_list:
         contigs, measures = test_assembly(params['reference_genome'], params['read_length'], params['num_reads'],
-                                          params['error_prob'], params['experiment_name'], num_iteration, path)
+                                          params['error_prob'], params['k'], params['experiment_name'], num_iteration, path)
 
         # Add parameters to results
         params['contigs'] = contigs
@@ -359,7 +360,7 @@ def run_simulations(params_list, num_iteration, path="plots"):
     return results_error_prone
 
 
-def run_simulations_num_iteration_parallel(params_list, num_iterations=10, path="plots"):
+def run_simulations_num_iteration_parallel(params_list, num_iterations=10, path="plots", grouping_value='error_prob'):
     """
     Run simulations for each parameter combination in parallel using joblib.
     Each parameter set will be processed independently by a different core.
@@ -368,6 +369,7 @@ def run_simulations_num_iteration_parallel(params_list, num_iterations=10, path=
         params_list (list): List of parameter dictionaries.
         num_iterations (int): Number of iterations to run for each parameter combination.
         path (str): Path to save the plots.
+        grouping_value (str): The value to group the results by.
 
     Returns:
         list: List of result dictionaries with average and std for numeric keys.
@@ -375,11 +377,13 @@ def run_simulations_num_iteration_parallel(params_list, num_iterations=10, path=
     def run_for_params(params):
         print(
             f"Running {params['experiment_name']} simulation with N={params['num_reads']}, "
-            f"l={params['read_length']}, p={params['error_prob']}, "
+            f"l={params['read_length']}, p={params['error_prob']}, k={params['k']}"
             f"expected coverage={params['expected_coverage']:.2f}x"
         )
         # Create folders for the experiment
-        experiment_folder = f"{path}/test_assembly/N={params['num_reads']}_l={params['read_length']}_p={params['error_prob']}"
+        other_value_str = 'k' if grouping_value=='k' else 'p'
+        other_value = params['k'] if grouping_value=='k' else params['error_prob']
+        experiment_folder = f"{path}/test_assembly/N={params['num_reads']}_l={params['read_length']}_{other_value_str}={other_value}"
         os.makedirs(experiment_folder, exist_ok=True)
 
         all_iteration_results_error_prone = []
