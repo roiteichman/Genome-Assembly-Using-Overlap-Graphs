@@ -167,8 +167,9 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, referenc
             plt.close()
 
 
-def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key="expected_coverage",
-                                        path="plots", log_scale=False, num_iterations=10, separator=None):
+def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage_key="expected_coverage",
+                                            path="plots", log_scale=False, num_iterations=1, separator=None,
+                                            other_value_key='error_prob'): #todo change 1 to 10
     """
     Plot experiment results with x_key values as x-axis and different error probabilities as separate series.
     Includes individual plots for each p value with trend lines, and combined plots, both includes version with raw data.
@@ -180,6 +181,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
     Parameters:
         results (list): List of result dictionaries.
         x_key (str): Dictionary key for x-axis values (typically "num_reads" or "read_length").
+        other_value_key (str): Key for the grouping variable (e.g. 'k' or 'error_prob').
         coverage_key (str): Dictionary key for coverage values or None.
         path (str): Path to save the plots.
         log_scale (bool): Whether to use logarithmic scale for x-axis.
@@ -193,8 +195,18 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
     df = pd.DataFrame(results)
 
     # Get unique error probabilities and x values
-    p_values = sorted(df['error_prob'].unique())
+    grouping_value = sorted(df[other_value_key].unique())
     x_values = sorted(df[x_key].unique())
+
+    other_value_str = 'p' if other_value_key == 'error_prob' else other_value_key
+    print(other_value_str)
+    other_value_title = ''
+    if other_value_key == 'error_prob':
+        other_value_title = f'Error Probability ({other_value_str})'
+    elif other_value_key == 'k':
+        other_value_title = f'K-mer Threshold ({other_value_str})'
+    else:
+        other_value_title = other_value_str
 
     all_x_values = x_values
     smaller_or_equal_x_values = None
@@ -270,10 +282,10 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
             if fixed_value:
                 fig.suptitle(
                     f"Measures for fixed {fixed_param}={fixed_value} for different {x_axis_label} {out_of_bounds_str}"
-                    f"values and different p values",
+                    f"values and different {other_value_str} values",
                     fontsize=28)
             else:
-                fig.suptitle(f"Measures for different {x_axis_label} {out_of_bounds_str}values and different p values",
+                fig.suptitle(f"Measures for different {x_axis_label} {out_of_bounds_str}values and different {other_value_str} values",
                              fontsize=28)
 
             # Plot each metric
@@ -285,32 +297,32 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 all_y = []
 
                 # For each error probability, plot a separate line
-                for p_idx, p in enumerate(p_values):
-                    # Filter data for this p value
-                    df_p = df_filtered[df_filtered['error_prob'] == p].sort_values(by=x_key)
+                for other_value_idx, g in enumerate(grouping_value):
+                    # Filter data for this other value
+                    df_filter = df_filtered[df_filtered[other_value_key] == g].sort_values(by=x_key)
 
-                    if df_p.empty:
+                    if df_filter.empty:
                         continue
 
-                    x_values_p = df_p[x_key].values
-                    metric_avg = df_p[f"{metric} avg"].values
-                    metric_std = df_p[f"{metric} std"].values
+                    x_values_filter = df_filter[x_key].values
+                    metric_avg = df_filter[f"{metric} avg"].values
+                    metric_std = df_filter[f"{metric} std"].values
 
                     # Collect data for overall trend line
-                    all_x.extend(x_values_p)
+                    all_x.extend(x_values_filter)
                     all_y.extend(metric_avg)
 
                     # Plot data with error bars
-                    ax.errorbar(x_values_p, metric_avg, yerr=metric_std, fmt='o-',
-                                label=f"p={p}", color=colors[p_idx % len(colors)],
+                    ax.errorbar(x_values_filter, metric_avg, yerr=metric_std, fmt='o-',
+                                label=f"{other_value_str}={g}", color=colors[other_value_idx % len(colors)],
                                 capsize=5, markersize=6)
 
                     # Overlay raw data points if requested
                     if include_raw:
-                        raw_data = df_p[f"{metric} raw"].values
+                        raw_data = df_filter[f"{metric} raw"].values
                         for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values_p[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
+                            ax.scatter([x_values_filter[j]] * len(raw_vals), raw_vals,
+                                       alpha=0.7, color=light_colors[other_value_idx % len(light_colors)], s=20,
                                        marker='o')
 
                 # set up axis configurations
@@ -326,11 +338,17 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 # Add average trend line
                 add_average_trend_line(ax, all_x, all_y, log_scale=log_scale)
 
+                # Calculate font size based on title length
+                title_length = len(other_value_title)
+                title_fontsize = 16  # Default font size
+                if title_length > 20:
+                    title_fontsize = 14  # Adjust font size for longer titles
+                elif title_length > 30:
+                    title_fontsize = 12
+
                 # Add legend
-                if i in [0,2]:
-                    ax.legend(title="Error Probability (p)", loc='upper left', fontsize=16)
-                elif i in [1,3,4]:
-                    ax.legend(title="Error Probability (p)", loc='lower right', fontsize=16)
+                if all_x:  # Check if any data was plotted
+                    ax.legend(title=other_value_title ,loc='upper left', fontsize=title_fontsize)
 
             # Adjust layout
             plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -338,7 +356,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
 
             is_raw = "_with_raw" if include_raw else ""
             # Create path for the experiment
-            full_path = f"{path}/{plot_type_suffix}/p_values_combined_{is_raw}.png"
+            full_path = f"{path}/{plot_type_suffix}/{other_value_str}_values_combined_{is_raw}.png"
             try:
                 directory = os.path.dirname(full_path)
                 if not os.path.exists(directory):
@@ -355,7 +373,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 plt.close() # Close the figure to free memory
 
         # 2. Create individual plots for each p value
-        for p_idx, p in enumerate(p_values):
+        for other_value_idx, g in enumerate(grouping_value):
             for include_raw in [False, True]:
                 # Create figure with subplots
                 is_raw = "_with_raw" if include_raw else ""
@@ -363,16 +381,16 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 # Add a descriptive suptitle
                 if fixed_value:
                     fig.suptitle(
-                        f"Measures for fixed {fixed_param}={fixed_value}, p={p} for different {x_axis_label}  {out_of_bounds_str}values",
+                        f"Measures for fixed {fixed_param}={fixed_value}, {other_value_str}={g} for different {x_axis_label}  {out_of_bounds_str}values",
                         fontsize=28)
                 else:
-                    fig.suptitle(f"Measures for p={p} for different {x_axis_label}  {out_of_bounds_str}values",
+                    fig.suptitle(f"Measures for {other_value_str}={g} for different {x_axis_label}  {out_of_bounds_str}values",
                                  fontsize=28)
 
                 # Filter data for this p value
-                df_p = df_filtered[df_filtered['error_prob'] == p].sort_values(by=x_key)
+                df_filter = df_filtered[df_filtered[other_value_key] == g].sort_values(by=x_key)
 
-                if df_p.empty:
+                if df_filter.empty:
                     continue
 
                 # Plot each metric
@@ -380,38 +398,38 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                     ax = axes[i]
 
                     # Get data
-                    x_values_p = df_p[x_key].values
-                    metric_avg = df_p[f"{metric} avg"].values
-                    metric_std = df_p[f"{metric} std"].values
+                    x_values_filter = df_filter[x_key].values
+                    metric_avg = df_filter[f"{metric} avg"].values
+                    metric_std = df_filter[f"{metric} std"].values
 
                     # Plot data with error bars
-                    ax.errorbar(x_values_p, metric_avg, yerr=metric_std, fmt='o-',
-                                color=colors[p_idx % len(colors)],
+                    ax.errorbar(x_values_filter, metric_avg, yerr=metric_std, fmt='o-',
+                                color=colors[other_value_idx % len(colors)],
                                 capsize=5, markersize=6)
 
                     # Overlay raw data points if requested
                     if include_raw:
-                        raw_data = df_p[f"{metric} raw"].values
+                        raw_data = df_filter[f"{metric} raw"].values
                         for j, raw_vals in enumerate(raw_data):
-                            ax.scatter([x_values_p[j]] * len(raw_vals), raw_vals,
-                                       alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
+                            ax.scatter([x_values_filter[j]] * len(raw_vals), raw_vals,
+                                       alpha=0.7, color=light_colors[other_value_idx % len(light_colors)], s=20)
 
                     # Set up axis configurations
-                    setup_plot_axis(ax, x_axis_label, metric, label, p, num_iterations, log_scale)
+                    setup_plot_axis(ax, x_axis_label, metric, label, g, num_iterations, log_scale)
 
                     # Add coverage information to x-axis if available
                     if coverage_key:
-                        x_ticks = x_values_p
-                        x_labels = [f"{x}\n(C={df_p[df_p[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
+                        x_ticks = x_values_filter
+                        x_labels = [f"{x}\n(C={df_filter[df_filter[x_key] == x][coverage_key].iloc[0]:.1f}x)" for x in x_ticks]
                         ax.set_xticks(x_ticks)
                         ax.set_xticklabels(x_labels, rotation=45)
                         ax.tick_params(axis='both', labelsize=18)
 
                     # Add trend line if we have enough points
-                    add_average_trend_line(ax, x_values_p, metric_avg, log_scale)
+                    add_average_trend_line(ax, x_values_filter, metric_avg, log_scale)
 
                     # Add legend if we have trend line
-                    if len(x_values_p) > 1:
+                    if len(x_values_filter) > 1:
                         ax.legend(loc='upper right', fontsize=12)
 
                 # Adjust layout
@@ -419,7 +437,7 @@ def plot_experiment_results_by_p_values(results, x_key="num_reads", coverage_key
                 plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
 
                 # Create path for the experiment
-                full_path = f"{path}/{plot_type_suffix}/p_value_{p}/ordered_by_{x_key}_{is_raw}.png"
+                full_path = f"{path}/{plot_type_suffix}/{other_value_str}_value_{g}/ordered_by_{x_key}_{is_raw}.png"
                 try:
                     directory = os.path.dirname(full_path)
                     if not os.path.exists(directory):

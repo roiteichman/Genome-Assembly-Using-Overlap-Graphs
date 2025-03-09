@@ -14,7 +14,6 @@ def construct_overlap_graph_nx_k(reads, k=5):
         nx.DiGraph: A NetworkX directed graph where nodes are reads and edges
                     represent overlaps with scores and end positions.
     """
-    print("Constructing overlap graph...")
     read_copies = {}
     for read in reads:
         read_copies[read] = read_copies.get(read, 0) + 1
@@ -73,7 +72,6 @@ def create_contig(start_read, dag, visited, topo_order):
     Returns:
         str: The assembled contig.
     """
-    print("Creating contig...")
     # Initialize the contig with the start read
     contig = start_read.split("_")[0]
     # Mark the start read as visited
@@ -111,7 +109,6 @@ def remove_cycles_from_graph(overlap_graph):
     Returns:
         nx.DiGraph: A DAG (Directed Acyclic Graph) with cycles removed.
     """
-    print("Removing cycles from graph...")
     G = overlap_graph
 
     while True:
@@ -146,20 +143,23 @@ def topological_sort(dag):
         raise ValueError("Graph is not a DAG! Cycles still exist.")
 
 
-def assemble_contigs_using_overlap_graphs(reads):
+def assemble_contigs_using_overlap_graphs(reads, k=5):
     """
     Assemble contigs using an overlap alignment graph with cycle removal and topological sorting.
 
     Parameters:
         reads (list): List of DNA reads.
+        k (int): The length of the k-mer prefix to use for filtering reads.
 
     Returns:
         list: List of assembled contigs.
     """
 
     # Step 1: Construct the initial overlap graph
-    overlap_graph, read_copies = construct_overlap_graph_nx_k(reads)
+    print("Constructing overlap graph...")
+    overlap_graph, read_copies = construct_overlap_graph_nx_k(reads, k=k)
     # Step 2: remove and sort the graph
+    print("Removing cycles from graph...")
     dag = remove_cycles_from_graph(overlap_graph)
     # Step 3: Sort the graph topologically
     topo_order_with_copies = {node: i for i, node in enumerate(nx.topological_sort(dag))}
@@ -170,6 +170,7 @@ def assemble_contigs_using_overlap_graphs(reads):
         topo_order[read] = topo_order_with_copies[read_with_copy]
 
     # Step 4: Assemble contigs following the sorted order
+    print("Creating contig...")
     visited = set()
     contigs = []
     for read in topo_order.keys():

@@ -2,7 +2,7 @@ import numpy as np
 import os
 from generateErrorFreeReads import read_genome_from_fasta
 from testAssembly import test_assembly
-from plots import plot_experiment_results_by_p_values, plot_const_coverage_results, plot_coverage_comparison
+from plots import plot_experiment_results_by_other_values, plot_const_coverage_results, plot_coverage_comparison
 from createAndSave import save_results, create_paths, load_coverage_results_from_csv
 from collections import defaultdict
 from consts import get_lower_bound_l, get_upper_bound_l, get_lower_bound_n, get_upper_bound_n, get_lower_bound_p, get_upper_bound_p
@@ -47,6 +47,7 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 5).astype(int))
     l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int))
     error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
+    k_values = np.unique(np.linspace(10, 15, 2).astype(int))
     paths_comparison = []
 
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
