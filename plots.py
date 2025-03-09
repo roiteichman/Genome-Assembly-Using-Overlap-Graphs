@@ -730,6 +730,7 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
 
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
+        os.makedirs(path, exist_ok=True)
         plt.savefig(f"{path}/coverage_comparison_const_p.png")
 
     def plot_coverage_trend_lines(all_results):
