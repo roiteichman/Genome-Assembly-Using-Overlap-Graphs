@@ -1,6 +1,8 @@
 import os
 import pandas as pd
 import re
+import ast
+
 
 def create_paths(paths):
     """
@@ -84,7 +86,7 @@ def load_coverage_results_from_csv(base_path, name_pattern):
     Load experimental results from 'results.csv' files in the specified directory structure.
 
     Parameters:
-        base_path (str): The base path "Genome-Assembly-Using-Overlap-Graphs\results\experiment_const_coverage".
+        base_path (str): The base path "results\experiment_const_coverage".
         name_pattern (str): The pattern for the C_{number} directories (e.g., "C_").
 
     Returns:
@@ -110,3 +112,60 @@ def load_coverage_results_from_csv(base_path, name_pattern):
             all_coverage_results[coverage] = results
 
     return all_coverage_results
+
+
+def load_and_clean_results(folder_path):
+    """
+    Loads results from a CSV file, cleans the data, and returns it as a list of dictionaries.
+
+    Parameters:
+        folder_path (str): Path to the folder containing the results.csv file.
+
+    Returns:
+        list: List of cleaned result dictionaries suitable for plotting.
+    """
+    try:
+        # Construct the full file path
+        file_path = os.path.join(folder_path, "results.csv")
+
+        # Load the CSV file into a DataFrame
+        df = pd.read_csv(file_path)
+
+        # Identify columns with "raw" in their suffix
+        raw_columns = [col for col in df.columns if col.endswith("raw")]
+
+        # Convert "raw" columns from string representation of lists to actual lists and handle numpy types
+        for col in raw_columns:
+            def convert_list(x):
+                try:
+                    lst = ast.literal_eval(x)
+                    if not isinstance(lst, list):
+                        return lst  # return non list values as is.
+
+                    if col in ["num_reads raw", "read_length raw", "Number of Contigs raw", "N50 raw"]:
+                        return [int(val) for val in lst]
+                    elif col in ["error_prob raw", "Mismatch Rate Aligned Regions raw",
+                                 "Mismatch Rate Genome Level raw", "expected_coverage raw", "Genome Coverage raw"]:
+                        return [float(val) for val in lst]
+                    else:
+                        return lst  # return other lists as is.
+                except (ValueError, SyntaxError) as e:
+                    print(f"Error converting column '{col}': {e} - value: {x}")
+                    return []  # return empty list on error.
+
+            df[col] = df[col].apply(convert_list)
+
+        # Convert DataFrame to a list of dictionaries
+        cleaned_results = df.to_dict('records')
+
+        return cleaned_results
+
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+        return
+    except pd.errors.EmptyDataError:
+        print(f"Warning: {file_path} is empty.")
+        return
+    except Exception as e:
+        print(f"An error occurred while loading or cleaning {file_path}: {e}")
+        return
