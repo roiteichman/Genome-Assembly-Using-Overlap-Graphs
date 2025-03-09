@@ -55,41 +55,58 @@ def save_results(results, experiment_name, path="results"):
     print(f"Summary results saved to {path}/summary.csv")
 
 
-def load_coverage_results_from_csv(path_to_csvs, name_pattern):
+def load_results_from_csv(file_path):
     """
-    Load experimental results from CSV files in the specified directory.
+    Load experiment results from a CSV file into a list of dictionaries.
 
     Parameters:
-        path_to_csvs (str): Path to the directory containing CSV result files.
-        name_pattern (str): The base name pattern to search for in filenames.
+        file_path (str): Path to the CSV result file.
+
+    Returns:
+        list: A list of result dictionaries.
+    """
+    try:
+        df = pd.read_csv(file_path)
+        return df.to_dict('records')
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+        return
+    except pd.errors.EmptyDataError:
+        print(f"Warning: {file_path} is empty.")
+        return
+    except Exception as e:
+        print(f"An error occurred while loading {file_path}: {e}")
+        return
+
+
+def load_coverage_results_from_csv(base_path, name_pattern):
+    """
+    Load experimental results from 'results.csv' files in the specified directory structure.
+
+    Parameters:
+        base_path (str): The base path "Genome-Assembly-Using-Overlap-Graphs\results\experiment_const_coverage".
+        name_pattern (str): The pattern for the C_{number} directories (e.g., "C_").
 
     Returns:
         dict: A dictionary with coverage levels as keys and lists of results as values.
     """
     all_coverage_results = {}
 
-    # Iterate through all CSV files in the directory
-    for filename in os.listdir(path_to_csvs):
-        if filename.endswith('.csv') and name_pattern in filename:
-            # Extract coverage level using regex
-            match = re.search(rf'{re.escape(name_pattern)}_(\d+)', filename)
-            if not match:
-                print(f"Skipping file {filename} - could not extract coverage")
+    for dir_name in os.listdir(base_path):
+        if dir_name.startswith(name_pattern):
+            # Extract coverage level from directory name
+            try:
+                coverage = float(dir_name.split('_')[1])
+            except (IndexError, ValueError):
+                print(f"Skipping directory {dir_name} - could not extract coverage")
                 continue
 
-            coverage = float(match.group(1))
-            full_path = os.path.join(path_to_csvs, filename)
+            # Construct full path to results.csv
+            results_path = os.path.join(base_path, dir_name, "results.csv")
 
-            # Read the CSV file
-            df = pd.read_csv(full_path)
-            if df.empty:
-                print(f"Warning: {filename} is empty! Skipping.")
-                continue
+            # Load results
+            results = load_results_from_csv(results_path)
 
-            # Convert DataFrame to list of dictionaries
-            results = df.to_dict('records')
-
-            # Store results for this coverage level
             all_coverage_results[coverage] = results
 
     return all_coverage_results
