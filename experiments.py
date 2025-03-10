@@ -72,12 +72,12 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
 
         #fixed p
         for p in error_probs:
-            all_coverage_results_by_p[C] = experiment_const_coverage(genome, C, [p], k_values, l_values=[6,9], x_axis_var="l",
+            all_coverage_results_by_p[C] = experiment_const_coverage(genome, C, [p], k_values, l_values=l_values, x_axis_var="l",
                                                                 experiment_name=f"experiment_const_coverage/C_{C}/by_p_{p}",
                                                                 paths=paths_c_by_p, return_results=True)
         #fixed k
         for k in k_values:
-            all_coverage_results_by_k[C] = experiment_const_coverage(genome, C, error_probs, [k], l_values=[6,9], x_axis_var="l",
+            all_coverage_results_by_k[C] = experiment_const_coverage(genome, C, error_probs, [k], l_values=l_values, x_axis_var="l",
                                                                 experiment_name=f"experiment_const_coverage/C_{C}/by_k_{k}",
                                                                 paths=paths_c_by_k, return_results=True)
 
