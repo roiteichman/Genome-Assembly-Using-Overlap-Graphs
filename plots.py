@@ -459,7 +459,8 @@ def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage
         plot_with_x_values(x_values_set, suffix)
 
 
-def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="plots", num_iterations=10, log_scale=False):
+def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="plots", num_iterations=10,
+                                log_scale=False, grouping_value='error_prob'):
     """
     Plot experiment results with constant coverage but varying N and l.
     Creates two sets of plots: one ordered by N and one ordered by l.
@@ -471,6 +472,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
         path (str): Path to save the plots.
         num_iterations (int): Number of iterations run for each parameter combination.
         log_scale (bool): Whether to use logarithmic scale for x-axis.
+        grouping_value (str): Key for the grouping variable (e.g. 'k' or 'error_prob').
 
     Returns:
         None
@@ -479,7 +481,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
     df = pd.DataFrame(results)
 
     # Get unique error probabilities
-    p_values = sorted(df['error_prob'].unique())
+    g_values = sorted(df[grouping_value].unique())
 
     # Colors for different p values
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
@@ -548,18 +550,18 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     all_x, all_y = [], []
 
                     # For each error probability, plot a separate line
-                    for p_idx, p in enumerate(p_values):
+                    for g_idx, g in enumerate(g_values):
                         # Filter data for this p value
-                        df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+                        df_filter = df[df[grouping_value] == g].sort_values(by=x_key)
 
-                        if df_p.empty:
+                        if df_filter.empty:
                             continue
 
                         # Get x values and corresponding y values
-                        x_values = df_p[x_key].values
-                        y_values = df_p[y_key].values
-                        metric_avg = df_p[f"{metric} avg"].values
-                        metric_std = df_p[f"{metric} std"].values
+                        x_values = df_filter[x_key].values
+                        y_values = df_filter[y_key].values
+                        metric_avg = df_filter[f"{metric} avg"].values
+                        metric_std = df_filter[f"{metric} std"].values
 
                         # Collect data for overall trend line
                         all_x.extend(x_values)
@@ -567,15 +569,15 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
 
                         # Plot data with error bars
                         ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                    label=f"p={p}", color=colors[p_idx % len(colors)],
+                                    label=f"{grouping_value}={g}", color=colors[g_idx % len(colors)],
                                     capsize=5, markersize=6)
 
                         # Overlay raw data points if requested
                         if include_raw:
-                            raw_data = df_p[f"{metric} raw"].values
+                            raw_data = df_filter[f"{metric} raw"].values
                             for j, raw_vals in enumerate(raw_data):
                                 ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                           alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20,
+                                           alpha=0.7, color=light_colors[g_idx % len(light_colors)], s=20,
                                            marker='o')
 
                     # Create x-tick labels with the other variable values
@@ -594,10 +596,11 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
 
                     # Add legend
                     """if i in [0, 2]:
-                        ax.legend(title="Error Probability (p)", loc='upper left', fontsize=16)
+                        ax.legend(title="{Error Probability (p)}", loc='upper left', fontsize=16)
                     elif i in [1, 3, 4]:
                         ax.legend(title="Error Probability (p)", loc='lower right', fontsize=16)"""
-                    ax.legend(title="Error Probability", loc='upper right', fontsize=12)
+                    if len(x_values) > 0:
+                        ax.legend(loc='upper right', fontsize=12)
 
                 # Adjust layout
                 plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -605,29 +608,29 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                 suffix = "_with_raw" if include_raw else ""
 
                 # Save plot
-                output_file = f"{full_path}/ordered_by_{x_axis_var}{suffix}.png"
+                output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_value}{suffix}.png"
                 plt.savefig(output_file, dpi=300, bbox_inches='tight')
                 plt.close()
 
             # 2. Individual p-value plots
-            for p_idx, p in enumerate(p_values):
+            for g_idx, g in enumerate(g_values):
                 for include_raw in [False, True]:
                     # Create figure with subplots
                     fig, axes = create_figure()
 
                     # Check out-of-bounds status
-                    x_values = sorted(df[df['error_prob'] == p][x_key].unique())
+                    x_values = sorted(df[df[grouping_value] == g][x_key].unique())
                     out_of_bounds_str = check_x_values_boundaries(x_values, lower_bound, upper_bound)
 
                     # Add a descriptive suptitle
                     fig.suptitle(
-                        f"Measures with constant coverage C={coverage_target:.1f}x, p={p}, {out_of_bounds_str}ordered by {x_label}",
+                        f"Measures with constant coverage C={coverage_target:.1f}x, p={g}, {out_of_bounds_str}ordered by {x_label}",
                         fontsize=28)
 
                     # Filter data for this p value
-                    df_p = df[df['error_prob'] == p].sort_values(by=x_key)
+                    df_filter = df[df[grouping_value] == g].sort_values(by=x_key)
 
-                    if df_p.empty:
+                    if df_filter.empty:
                         continue
 
                     # Plot each metric
@@ -635,22 +638,22 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                         ax = axes[i]
 
                         # Get data
-                        x_values = df_p[x_key].values
-                        y_values = df_p[y_key].values
-                        metric_avg = df_p[f"{metric} avg"].values
-                        metric_std = df_p[f"{metric} std"].values
+                        x_values = df_filter[x_key].values
+                        y_values = df_filter[y_key].values
+                        metric_avg = df_filter[f"{metric} avg"].values
+                        metric_std = df_filter[f"{metric} std"].values
 
                         # Plot data with error bars
                         ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                    color=colors[p_idx % len(colors)],
+                                    color=colors[g_idx % len(colors)],
                                     capsize=5, markersize=6)
 
                         # Overlay raw data points if requested
                         if include_raw:
-                            raw_data = df_p[f"{metric} raw"].values
+                            raw_data = df_filter[f"{metric} raw"].values
                             for j, raw_vals in enumerate(raw_data):
                                 ax.scatter([x_values[j]] * len(raw_vals), raw_vals,
-                                           alpha=0.7, color=light_colors[p_idx % len(light_colors)], s=20)
+                                           alpha=0.7, color=light_colors[g_idx % len(light_colors)], s=20)
 
                         # Create x-tick labels
                         x_ticks = x_values
@@ -678,7 +681,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                             ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
 
                         # Use setup_plot_axis to handle axis configuration consistently
-                        setup_plot_axis(ax, x_label, metric, label, p, num_iterations, log_scale)
+                        setup_plot_axis(ax, x_label, metric, label, g, num_iterations, log_scale)
 
                         # Add legend if we have trend line
                         if len(x_values) > 1:
@@ -695,7 +698,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     suffix = "_with_raw" if include_raw else ""
 
                     # Save plot
-                    output_file = f"{full_path}/ordered_by_{x_axis_var}_p_{p}{suffix}.png"
+                    output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_value}_{g}{suffix}.png"
                     plt.savefig(output_file, dpi=300, bbox_inches='tight')
                     plt.close()
 

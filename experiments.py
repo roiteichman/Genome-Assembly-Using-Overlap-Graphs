@@ -57,16 +57,24 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     print("Experiment #1 started!")
 
-    all_coverage_results = {}
+    all_coverage_results_by_p = {}
+    all_coverage_results_by_k = {}
     for C in total_coverage_targets:
         # Create paths for saving CSV files and plots
         paths_c = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}"),
                                 (path_to_save_plots, f"experiment_const_coverage/C_{C}")])
         paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/comparison")])
 
-        all_coverage_results[C] = experiment_const_coverage(genome, C, error_probs, l_values=l_values, x_axis_var="l",
-                                                            experiment_name=f"experiment_const_coverage_{C}",
-                                                            paths=paths_c, return_results=True)
+        #fixed p
+        for p in error_probs:
+            all_coverage_results_by_p[C] = experiment_const_coverage(genome, C, [p], k_values, l_values=[6,9], x_axis_var="l",
+                                                                experiment_name=f"test_comparison",
+                                                                paths=paths_c, return_results=True)
+        #fixed k
+        for k in k_values:
+            all_coverage_results_by_k[C] = experiment_const_coverage(genome, C, error_probs, [k], l_values=[6,9], x_axis_var="l",
+                                                                experiment_name=f"test_comparison",
+                                                                paths=paths_c, return_results=True)
 
     print("Experiment #1 completed!")
 
@@ -118,14 +126,15 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     print("Experiment #3 completed!")
 
     # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
-    plot_coverage_comparison(all_coverage_results, path=paths_comparison[0]) #TODO - Adjust
-    #plot_coverage_comparison(result_vary_l, path=paths_comparison[1])
-    #plot_coverage_comparison(result_vary_n, path=paths_comparison[2])
+    plot_coverage_comparison(all_coverage_results_by_p, genome_length, path=paths_comparison[0]) #TODO - Adjust
+    plot_coverage_comparison(all_coverage_results_by_k, genome_length, path=paths_comparison[0]) #TODO - Adjust
+    #plot_coverage_comparison(result_vary_l, genome_length, path=paths_comparison[1])
+    #plot_coverage_comparison(result_vary_n, genome_length, path=paths_comparison[2])
 
     print("All experiments completed!")
 
 
-def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_values=None, l_values=None,
+def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_values, n_values=None, l_values=None,
                               x_axis_var="n", experiment_name="const_coverage", paths=None, num_iterations=10,
                               log_scale=False, return_results=False):
     """
@@ -136,6 +145,7 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_
         reference_genome (str): Reference genome sequence.
         coverage_target (float): Target coverage to maintain (e.g., 10X).
         error_probs (np.array): List of p values to test.
+        k_values (np.array): List of k values to test.
         n_values (np.array, optional): List of N values to test. If provided, l will be calculated.
         l_values (np.array, optional): List of l values to test. If provided, N will be calculated.
         x_axis_var (str): Variable to use on x-axis ('n' or 'l').
@@ -157,6 +167,7 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_
     values = l_values if x_axis_var == "l" else n_values
     print(f"{x_axis_var}_values: {values}")
     print(f"p_values: {error_probs}")
+    print(f"k_values: {k_values}")
     print(f"expected_coverage: {coverage_target}\n")
 
     genome_length = len(reference_genome)
@@ -180,17 +191,19 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_
     expected_coverage = [n * l / genome_length for n, l in zip(n_values, l_values)]
 
     for i, p in enumerate(error_probs):
-        for j, (n, l) in enumerate(zip(n_values, l_values)):
-            params.append({
-                'num_reads': n,
-                'read_length': l,
-                'error_prob': p,
-                'reference_genome': reference_genome,
-                'expected_coverage': expected_coverage[j],
-                'experiment_name': experiment_name,
-                'num_iteration': num_iterations,
-                'contigs': None
-            })
+        for m, k in enumerate(k_values):
+            for j, (n, l) in enumerate(zip(n_values, l_values)):
+                params.append({
+                    'num_reads': n,
+                    'read_length': l,
+                    'error_prob': p,
+                    'k': k,
+                    'reference_genome': reference_genome,
+                    'expected_coverage': expected_coverage[j],
+                    'experiment_name': experiment_name,
+                    'num_iteration': num_iterations,
+                    'contigs': None
+                })
 
     # Run simulations
     results = run_simulations_num_iteration_parallel(params, num_iterations, path=paths[1])
@@ -200,8 +213,16 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, n_
     save_results(results, experiment_name, path=paths[0])
 
     # Plot results
-    plot_const_coverage_results(results, coverage_target=coverage_target, x_axis_var=x_axis_var, path=paths[1],
-                                log_scale=log_scale)
+
+    # Once group by 'p'
+    if len(error_probs)>1:
+        plot_const_coverage_results(results, coverage_target=coverage_target, x_axis_var=x_axis_var, path=paths[1],
+                                    log_scale=log_scale, grouping_value='error_prob', num_iterations=num_iterations)
+
+    # Once group by 'k'
+    if len(k_values)>1:
+        plot_const_coverage_results(results, coverage_target=coverage_target, x_axis_var=x_axis_var, path=paths[1],
+                                    log_scale=log_scale, grouping_value='k', num_iterations=num_iterations)
 
     if return_results:
         return results
