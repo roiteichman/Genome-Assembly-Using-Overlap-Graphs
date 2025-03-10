@@ -61,20 +61,25 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     all_coverage_results_by_k = {}
     for C in total_coverage_targets:
         # Create paths for saving CSV files and plots
-        paths_c = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}"),
-                                (path_to_save_plots, f"experiment_const_coverage/C_{C}")])
-        paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/comparison")])
+        paths_c_by_p = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}/by_p"),
+                                (path_to_save_plots, f"experiment_const_coverage/C_{C}/by_p")])
+        paths_comparison += create_paths([(path_to_save_plots, f"experiment_const_coverage/C_{C}/by_p/comparison")])
+
+        paths_c_by_k = create_paths([(path_to_save_csvs, f"experiment_const_coverage/C_{C}/by_k"),
+                                (path_to_save_plots, f"experiment_const_coverage/C_{C}/by_k")])
+        paths_comparison.insert(1,create_paths([(path_to_save_plots, f"experiment_const_coverage/C_{C}/by_k/comparison")])[0])
+
 
         #fixed p
         for p in error_probs:
             all_coverage_results_by_p[C] = experiment_const_coverage(genome, C, [p], k_values, l_values=[6,9], x_axis_var="l",
-                                                                experiment_name=f"test_comparison",
-                                                                paths=paths_c, return_results=True)
+                                                                experiment_name=f"experiment_const_coverage/C_{C}/by_p_{p}",
+                                                                paths=paths_c_by_p, return_results=True)
         #fixed k
         for k in k_values:
             all_coverage_results_by_k[C] = experiment_const_coverage(genome, C, error_probs, [k], l_values=[6,9], x_axis_var="l",
-                                                                experiment_name=f"test_comparison",
-                                                                paths=paths_c, return_results=True)
+                                                                experiment_name=f"experiment_const_coverage/C_{C}/by_k_{k}",
+                                                                paths=paths_c_by_k, return_results=True)
 
     print("Experiment #1 completed!")
 
@@ -127,7 +132,7 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
 
     # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
     plot_coverage_comparison(all_coverage_results_by_p, genome_length, path=paths_comparison[0]) #TODO - Adjust
-    plot_coverage_comparison(all_coverage_results_by_k, genome_length, path=paths_comparison[0]) #TODO - Adjust
+    plot_coverage_comparison(all_coverage_results_by_k, genome_length, path=paths_comparison[1]) #TODO - Adjust
     #plot_coverage_comparison(result_vary_l, genome_length, path=paths_comparison[1])
     #plot_coverage_comparison(result_vary_n, genome_length, path=paths_comparison[2])
 
