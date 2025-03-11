@@ -10,17 +10,19 @@ def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=-2**31):
     Overhanging ends are not penalized.
 
     Parameters:
-        s (str): First sequence.
-        t (str): Second sequence.
+        s (str): Source sequence.
+        t (str): Target sequence.
         match_score (int): Score for a matching base.
         mismatch (int): Penalty for a mismatch.
         indel (int): Penalty for an insertion/deletion (gap).
 
     Returns:
-        tuple: (best_alignment, best_score, best_overlap_length)
-        best_alignment (str): The best overlap alignment.
+        tuple: (alignment_to_print, align_s, align_t, best_score, alignment_end_position)
+        alignment_to_print (str): The best overlap alignment, nice to print and see the alignment.
+        align_s (str): The part of the source sequence that aligned.
+        align_t (str): The part of the target sequence that aligned.
         best_score (int): The alignment score.
-        alignment_end_position (int): End position of the alignment in the target sequence.
+        alignment_end_position (int): End position of the alignment in the target sequence, for concatenate them correctly.
     """
     n, m = len(s), len(t)
     dp = np.zeros((n + 1, m + 1), dtype=np.int32) # No penalty for overhanging ends
@@ -73,11 +75,11 @@ def overlap_alignment(s, t, match_score=10, mismatch=-1, indel=-2**31):
             align_t = t[j - 1] + align_t
             j -= 1
 
-    best_alignment = f"\nTarget:   {align_t}\n          {'|' * len(align_t)}\nQuery:    {align_s}"
+    alignment_to_print = f"\nTarget:   {align_t}\n          {'|' * len(align_t)}\nQuery:    {align_s}"
     best_score = int(max_score)
     alignment_end_position = overlap_len
 
-    return best_alignment, best_score, alignment_end_position
+    return alignment_to_print, align_s, align_t, best_score, alignment_end_position
 
 
 @njit
@@ -93,8 +95,10 @@ def local_alignment(query, reference, match_score=10, mismatch=-1, indel=-1):
         indel (int): Penalty for an insertion/deletion (gap).
 
     Returns:
-        tuple: (best_alignment, best score, start position in reference, end position in reference)
-        best_alignment (str): The best local alignment.
+        tuple: (alignment_to_print, aligned_reference, aligned_query, best score, start position in reference, end position in reference)
+        alignment_to_print (str): The best overlap alignment, nice to print and see the alignment.
+        aligned_reference (str): The part of the reference (genome or contig) that aligned.
+        aligned_query (str): The part of the query (read or contig) sequence that aligned.
         best_score (int): The alignment score.
         start_pos (int): Start position in the reference genome.
         end_pos (int): End position in the reference genome.
@@ -157,10 +161,10 @@ def local_alignment(query, reference, match_score=10, mismatch=-1, indel=-1):
     start_pos = j
     end_pos = best_j
 
-    best_alignment = (f"\nTarget:   {aligned_reference}\n          {'|' * len(aligned_reference)}\nQuery:    "
+    alignment_to_print = (f"\nTarget:   {aligned_reference}\n          {'|' * len(aligned_reference)}\nQuery:    "
                       f"{aligned_query}")
 
-    return best_alignment, best_score, start_pos, end_pos
+    return alignment_to_print, aligned_reference, aligned_query, best_score, start_pos, end_pos
 
 
 def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_length, match_score=10, mismatch=-1, indel=-1):
@@ -181,15 +185,21 @@ def align_read_or_contig_to_reference(read_or_contig, reference_genome, read_len
     """
     length_read_or_contig = len(read_or_contig)
     if length_read_or_contig < read_length:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome[-length_read_or_contig:],
-                                                       match_score, mismatch, indel)
+        to_print, aligned_ref, aligned_read_or_contig, score, start, end = local_alignment(read_or_contig,
+                                                                                           reference_genome
+                                                                                           [-length_read_or_contig:],
+                                                                                           match_score, mismatch,
+                                                                                           indel)
 
         start = len(reference_genome) - length_read_or_contig + start
         end = len(reference_genome) - length_read_or_contig + end
 
     else:
-        alignment, score, start, end = local_alignment(read_or_contig, reference_genome, match_score, mismatch, indel)
-    return alignment, score, start, end
+        to_print, aligned_ref, aligned_read_or_contig, score, start, end = local_alignment(read_or_contig,
+                                                                                           reference_genome,
+                                                                                           match_score, mismatch, indel)
+
+    return to_print, aligned_ref, aligned_read_or_contig, score, start, end
 
 
 def local_alignment_biopython(seq1, seq2, match=10, mismatch=-1, gap_open=-1, gap_extend=-1):
