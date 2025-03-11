@@ -3,7 +3,7 @@ from aligners import align_read_or_contig_to_reference
 from plots import plot_genome_coverage, plot_genome_depth, plot_reconstructed_coverage
 
 
-def calculate_genome_coverage(contigs_alignment_details, reference_genome, expected_coverage, experiment_name, num_iteration, path="plots"):
+def calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, reference_genome, expected_coverage, experiment_name, num_iteration, path="plots"):
     """
     Compute the percentage of genome bases covered by at least one contig.
 
@@ -18,30 +18,49 @@ def calculate_genome_coverage(contigs_alignment_details, reference_genome, expec
     Returns:
         tuple (float, float): Genome coverage rate and mismatch rate relative to the genome.
     """
-
     genome_length = len(reference_genome)
     coverage = np.zeros(genome_length)
+    mismatches_aligned_regions = np.zeros(genome_length)
 
     for contig in contigs_alignment_details:
+        aligned_ref = contigs_alignment_details[contig]["Alignment_reference"]
+        aligned_query = contigs_alignment_details[contig]["Alignment_query"]
+        score = contigs_alignment_details[contig]["Alignment Score"]
         start = contigs_alignment_details[contig]["Start Position"]
         end = contigs_alignment_details[contig]["End Position"]
         if start != -1 and end != -1:
             # update teh covered_bases with the range of the contig
             coverage[start:end] += 1
+            #print(f"Updating coverage for contig {contig} from {start} to {end-1}")
+            # update the mismatch rate for the aligned regions
+            for i, (ref_char, query_char) in enumerate(zip(aligned_ref, aligned_query)):
+                #print(f"Comparing {ref_char} and {query_char}")
+                if query_char == '-' or query_char != ref_char:
+                    mismatches_aligned_regions[start + i] += 1
 
-    if num_iteration != 1 and np.all(coverage == coverage[0]):
+    #print(f"Coverage: {coverage}")
+    #print(f"Mismatch Rate Aligned Regions: {mismatches_aligned_regions}")
+    if num_iteration != 1 and np.all(coverage == coverage[0]): #reduce amount of plots
         pass
-    elif num_iteration == 1:
+    else: #plot only interesting plot from the first iteration
         # plot only the interesting cases
         plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path)
         plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path)
 
-    coverage_rate = np.count_nonzero(coverage) / genome_length
+    #print(f"genome length: {genome_length}")
+    covered_bases = np.count_nonzero(coverage)
+    #print(f"Covered bases: {covered_bases}")
+    uncovered_bases = genome_length-covered_bases
+    #print(f"Uncovered bases: {uncovered_bases}")
+    coverage_rate = covered_bases / genome_length
+    bases_covered_with_mismatch_or_indle = np.count_nonzero(mismatches_aligned_regions)
+    #print(f"Bases covered with mismatch or indel: {bases_covered_with_mismatch_or_indle}")
+    mismatch_rate_aligned_regions = bases_covered_with_mismatch_or_indle / covered_bases if covered_bases > 0 else 0.0
+    mismatch_rate_full_genome = (bases_covered_with_mismatch_or_indle+uncovered_bases) / genome_length
 
-    mismatch_rate_full_genome = calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_genome,
-                                                                    coverage)
-
-    return coverage_rate, mismatch_rate_full_genome
+    """mismatch_rate_full_genome = calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_genome,
+                                                                    coverage)"""
+    return coverage_rate, mismatch_rate_aligned_regions, mismatch_rate_full_genome
 
 
 def calculate_mismatch_rate_aligned_regions(contigs_alignment_details, reference_genome):
@@ -158,57 +177,64 @@ def calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_gen
     return min(1.0, mismatch_rate)
 
 
-def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, reference_genome,
-                                             experiment_name, num_iteration, path="plots"):
-    """
-    Computes essential assembly quality metrics.
+def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_genome,
+                       experiment_name, num_iteration, path="plots"):
+        """
+        Computes essential assembly quality metrics.
 
-    Parameters:
-        contigs (list): List of assembled contigs.
-        reads (list): List of sequencing reads.
-        num_reads (int): Number of reads used for assembly.
-        reads_length (int): Length of each read.
-        error_prob (float): Probability of mutation in error-prone reads.
-        reference_genome (str): The reference genome sequence.
-        experiment_name (str): The name of the experiment.
-        num_iteration (int): The number of the specific iteration.
-    Returns:
-        dict: Dictionary of performance metrics.
+        Parameters:
+            contigs (list): List of assembled contigs.
+            reads (list): List of sequencing reads.
+            num_reads (int): Number of reads used for assembly.
+            reads_length (int): Length of each read.
+            error_prob (float): Probability of mutation in error-prone reads.
+            ref_genome (str): The reference genome sequence.
+            experiment_name (str): The name of the experiment.
+            num_iteration (int): The number of the specific iteration.
+        Returns:
+            dict: Dictionary of performance metrics.
 
-    Metrics:
-    - Number of Contigs: Number of contigs assembled.
-    - Genome Coverage: Percentage of genome covered by the contigs.
-    - N50: Shortest contig length at 50% total contig length.
-    - Mismatch Rate: Fraction of bases in contigs that mismatch the reference genome.
-    - Reconstructed Genome Coverage: Plot of read coverage depth for each base in the assembled contigs.
-    """
-    print(f"Calculating performance measures for {experiment_name} (Iteration {num_iteration})")
-    contigs_alignment_details = {}
+        Metrics:
+        - Number of Contigs: Number of contigs assembled.
+        - Genome Coverage: Percentage of genome covered by the contigs.
+        - N50: Shortest contig length at 50% total contig length.
+        - Mismatch Rate: Fraction of bases in contigs that mismatch the reference genome.
+        - Reconstructed Genome Coverage: Plot of read coverage depth for each base in the assembled contigs.
+        """
+        print(f"Calculating performance measures for {experiment_name} (Iteration {num_iteration})")
+        contigs_alignment_details = {}
+        expected_coverage = num_reads * reads_length / len(ref_genome)
 
-    for contig in contigs:
-        _, score, start, end = align_read_or_contig_to_reference(contig, reference_genome, reads_length)
+        for contig in contigs:
+            to_print, aligned_ref, aligned_read_or_contig, score, start, end = (
+                align_read_or_contig_to_reference(contig, ref_genome, reads_length))
 
-        contigs_alignment_details[contig] = {
-            "Alignment Score": score,
-            "Start Position": start,
-            "End Position": end,
+            contigs_alignment_details[contig] = {
+                "Print": to_print,
+                "Alignment_reference": aligned_ref,
+                "Alignment_query": aligned_read_or_contig,
+                "Alignment Score": score,
+                "Start Position": start,
+                "End Position": end,
+            }
+
+            print(f"Alignment: {to_print}\nScore: {score}\nStart: {start}\nEnd: {end}")
+
+            # TODO - run just for small amount of experiments because very computational heavy
+            """plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, reference_genome,
+                                        experiment_name, num_iteration, path)"""
+
+        genome_coverage, mismatch_rate_aligned_regions, mismatch_rate_full_genome = (
+            calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, ref_genome, expected_coverage,
+                                                        experiment_name, num_iteration, path))
+
+        return {
+            "Number of Contigs": len(contigs),
+            "Genome Coverage": genome_coverage,
+            "N50": calculate_n50(contigs),
+            "Mismatch Rate Aligned Regions": mismatch_rate_aligned_regions,
+            "Mismatch Rate Genome Level": mismatch_rate_full_genome,
         }
-
-        expected_coverage = num_reads * reads_length / len(reference_genome)
-
-        # TODO - run just for small amount of experiments because very computational heavy
-        """plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, reference_genome,
-                                    experiment_name, num_iteration, path)"""
-
-    genome_coverage, mismatch_rate_full_genome = calculate_genome_coverage(contigs_alignment_details, reference_genome, expected_coverage, experiment_name, num_iteration, path)
-
-    return {
-        "Number of Contigs": len(contigs),
-        "Genome Coverage": genome_coverage,
-        "N50": calculate_n50(contigs),
-        "Mismatch Rate Aligned Regions": calculate_mismatch_rate_aligned_regions(contigs_alignment_details, reference_genome),
-        "Mismatch Rate Genome Level": mismatch_rate_full_genome,
-    }
 
 
 if __name__ == "__main__":
@@ -283,13 +309,20 @@ if __name__ == "__main__":
     import random
     # chose random 10 reads
     reads = random.sample(reads, 10)
-    from overlapGraphs import assemble_contigs_using_overlap_graphs
-    contigs = ['ACGTTGCGT', 'TGCGT', 'TGCGT']#assemble_contigs_using_overlap_graphs(reads)
+    from overlapGraphs import assemble_contigs_using_overlap_graphs, assemble_contigs_string
+    contigs = assemble_contigs_using_overlap_graphs(reads, 2)
+    #['ACGTTGCGT', 'TGCGT', 'TGCGT']#assemble_contigs_using_overlap_graphs(reads)
 
-    results = calculate_measures(contigs, reads, 10, 5, 0.1, genome, "t1", 1)
+    results = calculate_measures(contigs, reads, 10, 5, 0, genome, "t1", 1)
 
     print(f"genome: {genome}")
     print(f"contigs: {contigs}")
     print(f"reads: {reads}")
-
     print(results)
+    print("++++++++++++++++++++")
+    contigs_string = assemble_contigs_string(reads)
+    results_string = calculate_measures(contigs_string, reads, 10, 5, 0, genome, "t1", 1)
+    print(f"genome: {genome}")
+    print(f"contigs: {contigs_string}")
+    print(f"reads: {reads}")
+    print(results_string)
