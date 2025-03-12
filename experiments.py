@@ -312,7 +312,7 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_v
 
 
     # Run simulations
-    results = run_simulations_num_iteration_parallel(params, num_iterations, path=paths[1], grouping_value=grouping_value)
+    results = run_simulations_parallel(params, path=paths[1], grouping_value=grouping_value)
 
     # Save results
     save_results(results, experiment_name, path=paths[0])
@@ -424,7 +424,7 @@ def run_simulations_parallel(params_list, path="plots", grouping_value='error_pr
     def run_for_params(params):
         print(
             f"Running {params['experiment_name']} simulation with N={params['num_reads']}, "
-            f"l={params['read_length']}, p={params['error_prob']}, k={params['k']}"
+            f"l={params['read_length']}, p={params['error_prob']}, k={params['k']}, "
             f"expected coverage={params['expected_coverage']:.2f}x"
         )
         # Create folders for the experiment
