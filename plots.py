@@ -6,6 +6,7 @@ import pandas as pd
 import os
 from aligners import align_read_or_contig_to_reference
 from consts import get_lower_bound_n, get_upper_bound_n, get_lower_bound_l, get_upper_bound_l, get_metrics, get_metric_labels
+from createAndSave import create_paths
 
 lower_bound_l = get_lower_bound_l()
 upper_bound_l = get_upper_bound_l()
@@ -326,7 +327,8 @@ def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage
                                        marker='o')
 
                 # set up axis configurations
-                setup_plot_axis(ax, x_axis_label, metric, label, 'combined', num_iterations, log_scale)
+                setup_plot_axis(ax, x_axis_label, metric, label, other_value_str, 'combined',
+                                num_iterations, log_scale)
 
                 # Add coverage information to x-axis if available
                 if coverage_key:
@@ -415,7 +417,7 @@ def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage
                                        alpha=0.7, color=light_colors[other_value_idx % len(light_colors)], s=20)
 
                     # Set up axis configurations
-                    setup_plot_axis(ax, x_axis_label, metric, label, g, num_iterations, log_scale)
+                    setup_plot_axis(ax, x_axis_label, metric, label, other_value_str, g, num_iterations, log_scale)
 
                     # Add coverage information to x-axis if available
                     if coverage_key:
@@ -459,7 +461,7 @@ def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage
         plot_with_x_values(x_values_set, suffix)
 
 
-def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="plots", num_iterations=10,
+def plot_const_coverage_results(results, coverage_target, x_axis_var="num_reads", path="plots", num_iterations=10,
                                 log_scale=False, grouping_value='error_prob'):
     """
     Plot experiment results with constant coverage but varying N and l.
@@ -468,7 +470,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
     Parameters:
         results (list): List of result dictionaries.
         coverage_target (float): The target coverage value.
-        x_axis_var (str): Variable to use on x-axis ('n' or 'l') - used for naming only.
+        x_axis_var (str): Variable to use on x-axis ("num_reads" or "read_length") - used for naming only.
         path (str): Path to save the plots.
         num_iterations (int): Number of iterations run for each parameter combination.
         log_scale (bool): Whether to use logarithmic scale for x-axis.
@@ -493,12 +495,8 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
 
 
     # Create path for the experiment
-    full_path = f"{path}/summary_plots"
-    try:
-        os.makedirs(full_path, exist_ok=True)
-    except OSError as e:
-        print(f"Error creating directory {full_path}: {e}")
-        return  # Return to prevent errors when trying to save plots.
+    full_path = create_paths([(path, "summary_plots")])[0]
+    os.makedirs(full_path, exist_ok=True)
 
     def plot_metric_data(x_key, y_key, x_label, y_label, lower_bound, upper_bound):
             """
@@ -515,6 +513,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
             Returns:
                 None
             """
+            grouping_str = 'p' if grouping_value == 'error_prob' else 'k'
             # 1. Plot combined graph with all p values
             for include_raw in [False, True]:
                 # Create figure with subplots
@@ -569,7 +568,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
 
                         # Plot data with error bars
                         ax.errorbar(x_values, metric_avg, yerr=metric_std, fmt='o-',
-                                    label=f"{grouping_value}={g}", color=colors[g_idx % len(colors)],
+                                    label=f"{grouping_str}={g}", color=colors[g_idx % len(colors)],
                                     capsize=5, markersize=6)
 
                         # Overlay raw data points if requested
@@ -589,7 +588,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     ax.tick_params(axis='both', labelsize=18)
 
                     # Use setup_plot_axis to configure axis
-                    setup_plot_axis(ax, x_label, metric, label, 'combined', num_iterations, log_scale)
+                    setup_plot_axis(ax, x_label, metric, label, grouping_str, 'combined', num_iterations, log_scale)
 
                     # Add average trend line if we have enough data points
                     add_average_trend_line(ax, all_x, all_y, log_scale)
@@ -608,7 +607,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                 suffix = "_with_raw" if include_raw else ""
 
                 # Save plot
-                output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_value}{suffix}.png"
+                output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_str}{suffix}.png"
                 plt.savefig(output_file, dpi=300, bbox_inches='tight')
                 plt.close()
 
@@ -681,7 +680,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                             ax.plot(x_for_trend, trend_y, 'k--', linewidth=2, label="Trend Line")
 
                         # Use setup_plot_axis to handle axis configuration consistently
-                        setup_plot_axis(ax, x_label, metric, label, g, num_iterations, log_scale)
+                        setup_plot_axis(ax, x_label, metric, label, grouping_str, g, num_iterations, log_scale)
 
                         # Add legend if we have trend line
                         if len(x_values) > 1:
@@ -698,7 +697,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                     suffix = "_with_raw" if include_raw else ""
 
                     # Save plot
-                    output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_value}_{g}{suffix}.png"
+                    output_file = f"{full_path}/ordered_by_{x_axis_var}_{grouping_str}_{g}{suffix}.png"
                     plt.savefig(output_file, dpi=300, bbox_inches='tight')
                     plt.close()
 
@@ -714,7 +713,7 @@ def plot_const_coverage_results(results, coverage_target, x_axis_var="n", path="
                      lower_bound, upper_bound)
 
 
-def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", log_scale=False):
+def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", log_scale=False, grouping_value='error_prob'):
     """
     Plot coverage comparison for different metrics and error probabilities.
 
@@ -731,22 +730,25 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
         """
         Plot with coverage levels as different error bars for each p-value
         """
+        grouping_str = 'p' if grouping_value == 'error_prob' else 'k'
+        fixed_value = "Fixed Error Probability" if grouping_str=="p" else "Fixed K for K-mers"
+
         # Create figure with subplots
         fig, axes = create_figure()
         # Plot each metric
         for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
             ax = axes[i]
             # For each error probability, plot a separate line
-            for p in set(result['error_prob'] for results in all_results.values() for result in results):
+            for g in set(result[grouping_value] for results in all_results.values() for result in results):
                 coverage_metric_means = []
                 coverage_metric_stds = []
                 coverage_values = []
 
                 for C, results in all_results.items():
-                    p_results = [r for r in results if r['error_prob'] == p]
-                    if p_results:
-                        means = [r[f"{metric} avg"] for r in p_results]
-                        stds = [r[f"{metric} std"] for r in p_results]
+                    g_results = [r for r in results if r[grouping_value] == g]
+                    if g_results:
+                        means = [r[f"{metric} avg"] for r in g_results]
+                        stds = [r[f"{metric} std"] for r in g_results]
 
                         coverage_metric_means.append(np.mean(means))
                         coverage_metric_stds.append(np.mean(stds))
@@ -754,17 +756,21 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
 
                 ax.errorbar(coverage_values, coverage_metric_means,
                             yerr=coverage_metric_stds,
-                            label=f'p = {p}',
+                            label=f'{grouping_str} = {g}',
                             marker='o')
 
             # set up axis configurations
-            setup_plot_axis(ax, f'Coverage (C times {genome_length})', metric, label, log_scale=log_scale)
+            label_ax = f'Coverage (C times {genome_length})'
+            setup_plot_axis(ax, label_ax, metric, label, log_scale=log_scale)
             ax.legend(loc='upper right', fontsize=12)
 
+        fig.suptitle(
+            f"Different Coverage for {fixed_value}",
+            fontsize=28)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.subplots_adjust(wspace=0.3, hspace=0.4)  # Make room for suptitle
         os.makedirs(path, exist_ok=True)
-        plt.savefig(f"{path}/coverage_comparison_const_p.png")
+        plt.savefig(f"{path}/coverage_comparison_const_{grouping_str}.png")
 
     def plot_coverage_trend_lines(all_results):
         """Plot trend lines for coverage levels across metrics"""
@@ -785,7 +791,8 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
             ax.scatter(x_values, y_values, label='Coverage Points')
             add_average_trend_line(ax, x_values, y_values, log_scale=log_scale)
             # set up axis configurations
-            setup_plot_axis(ax, f'Coverage (C times {genome_length})', metric, label, log_scale=log_scale)
+            label_ax = f'Coverage (C times {genome_length})'
+            setup_plot_axis(ax, label_ax, metric, label, log_scale=log_scale)
 
             ax.legend(loc='upper right', fontsize=12)
 
@@ -796,6 +803,86 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
     # Plot both visualizations
     plot_const_p_coverage(all_coverage_results)
     plot_coverage_trend_lines(all_coverage_results)
+
+
+def plot_experiment_results_by_two_values(results, x_key="num_reads", group_key_1="error_prob", group_key_2="k",
+                                          coverage_key="expected_coverage", path="plots", log_scale=False,
+                                          num_iterations=1):
+    """
+    Plot lines for every combination of group_key_1 and group_key_2.
+    E.g., for each p in error_prob, and each k in k_values, we draw a line.
+    The x-axis is x_key (like num_reads or read_length).
+
+    Parameters:
+    - results: List of result dictionaries.
+    - x_key: Dictionary key for x-axis values (typically "num_reads" or "read_length").
+    - group_key_1: Dictionary key for the first grouping variable (e.g., "error_prob").
+    - group_key_2: Dictionary key for the second grouping variable (e.g., "k").
+    - coverage_key: Dictionary key for coverage values or None.
+    - path: Path to save the plots.
+    - log_scale: Whether to use logarithmic scale for x-axis.
+
+    Returns:
+    - None
+    """
+    df = pd.DataFrame(results)
+
+    # Unique combos of p and k
+    val1_list = sorted(df[group_key_1].unique())
+    val2_list = sorted(df[group_key_2].unique())
+    x_values = sorted(df[x_key].unique())
+
+    fig, axes = create_figure()
+    fig.suptitle(f"Plot by {group_key_1} & {group_key_2}, x={x_key}", fontsize=28)
+
+    for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
+        ax = axes[i]
+        # We'll generate a different color/linestyle for each combination
+        # For simplicity, let's just build a label p=...,k=...
+        for v1 in val1_list:
+            for v2 in val2_list:
+                df_sub = df[(df[group_key_1] == v1) & (df[group_key_2] == v2)]
+                df_sub = df_sub.sort_values(by=x_key)
+                if df_sub.empty:
+                    continue
+
+                x_vals = df_sub[x_key].values
+                y_avg = df_sub[f"{metric} avg"].values
+                y_std = df_sub[f"{metric} std"].values
+
+                # e.g. label = f"p={v1}, k={v2}"
+                line_label = f"{group_key_1}={v1}, {group_key_2}={v2}"
+                ax.errorbar(
+                    x_vals, y_avg, yerr=y_std,
+                    fmt='o-', capsize=4, label=line_label
+                )
+
+        # Add coverage information to x-axis if available
+        if coverage_key:
+            x_ticks, x_labels = generate_x_tick_labels(df, x_key, coverage_key)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels(x_labels, rotation=45)
+            ax.tick_params(axis='both', labelsize=20)
+
+        ax.set_xlabel(x_key)
+        ax.set_ylabel(label)
+        ax.set_title(f"{label} vs. {x_key}", fontsize=22)
+        ax.grid(True, alpha=0.3)
+        if log_scale:
+            ax.set_xscale("log")
+
+        if len(x_values) > 1:
+            add_average_trend_line(ax, x_values, y_avg, log_scale=log_scale)
+
+        if len(val1_list) > 1:
+            ax.legend(fontsize=12)
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
+
+    os.makedirs(path, exist_ok=True)
+    plt.savefig(os.path.join(path, f"two_values_{group_key_1}_{group_key_2}.png"), dpi=300)
+    plt.close()
 
 
 def check_x_values_boundaries(x_values, lower_bound, upper_bound):
@@ -823,7 +910,8 @@ def check_x_values_boundaries(x_values, lower_bound, upper_bound):
     return out_of_bounds_str
 
 
-def setup_plot_axis(ax, x_axis_label, metric, metric_label, p=None, num_iterations=None, log_scale=False):
+def setup_plot_axis(ax, x_axis_label, metric, metric_label, grouping_by_str='p', groupying_by_val=None,
+                    num_iterations=None, log_scale=False):
     """
     Set up common axis configurations for plots.
 
@@ -833,7 +921,8 @@ def setup_plot_axis(ax, x_axis_label, metric, metric_label, p=None, num_iteratio
     - label: Specific metric label
     - metric: Metric name
     - metric_label: Full metric label
-    - p: Error probability
+    - grouping_by_str: Grouping variable name for print (e.g., 'p' or 'k')
+    - groupying_by_val: Grouping variable value (e.g., 0.001 for p or 5 for 5)
     - num_iterations: Number of iterations
     - log_scale: Whether to use log scale (default False)
 
@@ -847,8 +936,8 @@ def setup_plot_axis(ax, x_axis_label, metric, metric_label, p=None, num_iteratio
     # Add labels and title
     ax.set_xlabel(x_axis_label, fontsize=16)
     ax.set_ylabel(metric_label, fontsize=16)
-    if p is not None and num_iterations is not None:
-        ax.set_title(f"{metric} vs. {x_axis_label} (p={p}, {num_iterations} iterations)", fontsize=22)
+    if groupying_by_val is not None and num_iterations is not None:
+        ax.set_title(f"{metric} vs. {x_axis_label} ({grouping_by_str}={groupying_by_val}, {num_iterations} iterations)", fontsize=22)
     ax.set_title(f"{metric} vs. {x_axis_label}", fontsize=22)
     ax.grid(True, alpha=0.3)
 
