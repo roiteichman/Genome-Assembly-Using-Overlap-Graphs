@@ -23,6 +23,7 @@ def calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, refer
     mismatches_aligned_regions = np.zeros(genome_length)
 
     for contig in contigs_alignment_details:
+        alignment_to_print = contigs_alignment_details[contig]["Print"]
         aligned_ref = contigs_alignment_details[contig]["Alignment_reference"]
         aligned_query = contigs_alignment_details[contig]["Alignment_query"]
         score = contigs_alignment_details[contig]["Alignment Score"]
@@ -33,8 +34,9 @@ def calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, refer
             coverage[start:end] += 1
             #print(f"Updating coverage for contig {contig} from {start} to {end-1}")
             # update the mismatch rate for the aligned regions
-            for i, (ref_char, query_char) in enumerate(zip(aligned_ref, aligned_query)):
-                #print(f"Comparing {ref_char} and {query_char}")
+            for i in range(end - start):  # iterate from 0 to the length of the covered section.
+                ref_char = aligned_ref[i]
+                query_char = aligned_query[i]
                 if query_char == '-' or query_char != ref_char:
                     mismatches_aligned_regions[start + i] += 1
 

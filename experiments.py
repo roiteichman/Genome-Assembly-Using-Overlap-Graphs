@@ -45,11 +45,10 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
 
     total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30]
     # TODO - decide wheather upper_bound_n or 10,000 as biggest num + k of k-mers + num_iterations
-    n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(upper_bound_n), 5).astype(int))
-    l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int))
-    error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
-    k_values = np.unique(np.linspace(10, 15, 2).astype(int))
-    paths_comparison = []
+    n_values = np.array([2, 5])#np.unique(np.logspace(np.log10(lower_bound_n), np.log10(big_n), 5).astype(int)) #TODO turn back
+    l_values = np.array([5, 10])#np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int)) #TODO - turn back
+    error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 2)) # TODO - turn back to 3, and boundaries
+    k_values = np.array([0, 1])#np.unique(np.linspace(0, 15, 4).astype(int)) #TODO - includes 0?, turn back to 4, and 15
     paths_comparison_fixed_k = []
     paths_comparison_fixed_p = []
 
@@ -318,8 +317,9 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_v
     # Save results
     save_results(results, experiment_name, path=paths[0])
 
-    # Plot results
     # TODO - update like the const version
+
+    """# Plot results
     if len(n_values) > 1:
         plot_experiment_results_by_other_values(results, x_key="num_reads", coverage_key="expected_coverage",
                                                 path=paths[1], log_scale=log_scale,
