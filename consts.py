@@ -25,6 +25,11 @@ def get_upper_bound_n():
     return upper_bound_n
 
 
+# big enough N to be used in the tests, bigger than that is not compute on my computer
+def get_big_n():
+    return 10000
+
+
 def get_lower_bound_p():
     return lower_bound_p
 
