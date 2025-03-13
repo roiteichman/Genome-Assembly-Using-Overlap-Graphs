@@ -3,7 +3,7 @@ import os
 from generateErrorFreeReads import read_genome_from_fasta
 from testAssembly import test_assembly
 from plots import plot_experiment_results_by_other_values, plot_const_coverage_results, plot_coverage_comparison, plot_experiment_results_by_two_values
-from createAndSave import save_results, create_paths, load_coverage_results_from_csv
+from createAndSave import save_results, create_paths, load_coverage_results_from_csv, load_and_clean_results, load_and_combine_results
 from collections import defaultdict
 from consts import get_lower_bound_l, get_upper_bound_l, get_lower_bound_n, get_upper_bound_n, get_big_n, get_lower_bound_p, get_upper_bound_p
 from joblib import Parallel, delayed
@@ -20,7 +20,7 @@ big_n = get_big_n()
 
 
 def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", path_to_save_plots="plots",
-                    path_to_logs="logs.txt"):
+                    skip_1=False, skip_2=False, skip_3=False, data_replace_experiment=None):
     """
     Main function to run all experimentation scenarios.
 
@@ -28,7 +28,10 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
         file_path (str): Path to the FASTA file containing the reference genome.
         path_to_save_csvs (str): Path to save the CSV result files.
         path_to_save_plots (str): Path to save the plots.
-        path_to_logs (str): Path to save the log file.
+        skip_1 (bool): Whether to skip the first experiment.
+        skip_2 (bool): Whether to skip the second experiment.
+        skip_3 (bool): Whether to skip the third experiment.
+        data_replace_experiment (int): if not None, it will replace the experiment with the given index with the data
 
     Returns:
         None (Saves results to files and generates plots)
@@ -38,110 +41,183 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     """""                           PREPARATIONS FOR THE EXPERIMENTS                           """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Read the reference genome from the FASTA file
-    genome = read_genome_from_fasta(file_path)
+    genome = read_genome_from_fasta(file_path) #"ATGCGTACGTTAGC"
     genome_length = len(genome)
 
-    c_smaller_than_1 = round(((lower_bound_n * lower_bound_l) / genome_length), 3)
+    c_smaller_than_1 = round(((lower_bound_n * lower_bound_l) / genome_length), 3) #10/14
 
-    total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30]
-    # TODO - decide wheather upper_bound_n or 10,000 as biggest num + k of k-mers + num_iterations
-    n_values = np.array([2, 5])#np.unique(np.logspace(np.log10(lower_bound_n), np.log10(big_n), 5).astype(int)) #TODO turn back
-    l_values = np.array([5, 10])#np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int)) #TODO - turn back
-    error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 2)) # TODO - turn back to 3, and boundaries
-    k_values = np.array([0, 1])#np.unique(np.linspace(0, 15, 4).astype(int)) #TODO - includes 0?, turn back to 4, and 15
+    total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30] #[2, 5]
+    n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(big_n), 5).astype(int)) # np.array([2, 5])
+    l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int)) #np.array([5, 10])
+    error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
+    k_values = np.unique(np.linspace(0, 15, 4).astype(int)) #np.array([0, 1])
     paths_comparison_fixed_k = []
     paths_comparison_fixed_p = []
 
+    # if skip_1 is True, then its 0, else it will not be used so nevermind the value
+    exp_1_idx = 0
+    # if skip_1 is True, then if skip_2 is True, its 0, else it will not be used so nevermind the value
+    exp_2_idx = 1 if skip_1 is False else 0
+    # if skip_1 is True, then if skip_2 is True, its 1, else it will not be used so nevermind the value
+    exp_3_other_option_idx = 1 if skip_1 is False else 0
+    exp_3_idx = 2 if (skip_1 is False and skip_2 is False) else exp_3_other_option_idx
+
+    path_to_loaded_data = None
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     """""                       FIRST EXPERIMENT - VARYING COVERAGE TARGETS (C)                """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # For fixed C we will find N and l that keep the number of reads and read length constant
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    print("Experiment #1 started!")
-
     all_coverage_results_fixed_k = {}
     all_coverage_results_fixed_p = {}
 
-    for C in total_coverage_targets:
-        # Create paths for saving CSV files and plots
-        experiment_name = f"experiment_const_coverage/C_{C}"
-        paths_c = create_paths([(path_to_save_csvs, experiment_name), (path_to_save_plots, experiment_name)])
-        prefix_comparison = f"experiment_const_coverage/comparison"
-        paths_comparison_fixed_k += create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_k")])
-        paths_comparison_fixed_p.insert(1, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_p")])[0])
+    if not skip_1 or data_replace_experiment == 1:
+        print("Experiment #1 started!")
 
-        results = experiment_const_coverage(genome, C, error_probs, k_values,
-                                            l_values=l_values,
-                                            x_axis_var="l",
-                                            experiment_name=experiment_name,
-                                            paths=paths_c, return_results=True)
+        for C in total_coverage_targets:
+            # Create paths for saving CSV files and plots
+            experiment_name = f"experiment_const_coverage/C_{C}"
+            paths_c = create_paths([(path_to_save_csvs, experiment_name), (path_to_save_plots, experiment_name)])
+            prefix_comparison = f"experiment_const_coverage/comparison"
+            paths_comparison_fixed_k.insert(exp_1_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_k")])[0])
+            paths_comparison_fixed_p.insert(exp_1_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_p")])[0])
 
-        res_fixed_k = filter_results(results, 'k', k_values)
-        r_fixed_k = filter_results(res_fixed_k, 'k', k_values)
-        all_coverage_results_fixed_k[C] = r_fixed_k
-        res_fixed_p = filter_results(results, 'error_prob', error_probs)
-        r_fixed_p = filter_results(res_fixed_p, 'error_prob', error_probs)
-        all_coverage_results_fixed_p[C] = r_fixed_p
+            if data_replace_experiment != 1:
+                results = experiment_const_coverage(genome, C, error_probs, k_values,
+                                                    l_values=l_values,
+                                                    x_axis_var="l",
+                                                    experiment_name=experiment_name,
+                                                    paths=paths_c, return_results=True)
 
-    print("Experiment #1 completed!")
+                res_fixed_k = filter_results(results, 'k', k_values)
+                all_coverage_results_fixed_k[C] = res_fixed_k
+                res_fixed_p = filter_results(results, 'error_prob', error_probs)
+                all_coverage_results_fixed_p[C] = res_fixed_p
+            else:
+                path_to_loaded_data = f"{path_to_save_csvs}/{experiment_name}"
+
+        print("Experiment #1 completed!")
 
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     """""       SECOND EXPERIMENT - VARYING READS LENGTH FOR FIXED N AND FOR ALL C VALUES      """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    results_vary_l_fixed_k = {}
+    results_vary_l_fixed_p = {}
 
-    print("Experiment #2 started!")
+    if not skip_2 or data_replace_experiment == 2:
+        print("Experiment #2 started!")
 
-    # Fixed N
-    result_vary_l = defaultdict(list)
-    for n in n_values:
+        # Fixed N
+        for n in n_values:
+            suffix = f"experiment_varying_l/fixed_n_{n}"
+            paths_vary_l = create_paths([(path_to_save_csvs, suffix), (path_to_save_plots, suffix)])
 
-        paths_l = create_paths([(path_to_save_csvs, f"experiment_varying_l_fixed_n_{n}"),
-                                (path_to_save_plots, f"experiment_varying_l_fixed_n_{n}")])
-        paths_comparison.insert(1, create_paths([(path_to_save_plots, f"experiment_varying_l_fixed_n_{n}/comparison")])[0])
+            prefix_comparison = f"experiment_varying_l/comparison"
+            paths_comparison_fixed_k.insert(exp_2_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_k")])[0])
+            paths_comparison_fixed_p.insert(exp_2_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_p")])[0])
 
-        median_l = int(l_values[len(l_values) // 2])
+            median_l = int(l_values[len(l_values) // 2])
 
-        result_vary_l[n].append(experiment_varying_value(genome, [n], l_values, error_probs,
-                                                         expected_coverage=total_coverage_targets,
-                                                         experiment_name=f"experiment_varying_l_fixed_n_{n}",
-                                                         paths=paths_l, return_results=True, separator=median_l))
+            if data_replace_experiment != 2:
+                results = experiment_varying_value(genome, [n], l_values, error_probs, k_values,
+                                                   expected_coverage=total_coverage_targets,
+                                                   experiment_name=f"experiment_varying_l_fixed_n_{n}",
+                                                   paths=paths_vary_l, separator=median_l, return_results=True)
 
-    print("Experiment #2 completed!")
+                res_fixed_k = filter_results(results, 'k', k_values)
+                r_fixed_k = filter_results(res_fixed_k, 'k', k_values)
+                results_vary_l_fixed_k[n] = r_fixed_k
+                res_fixed_p = filter_results(results, 'error_prob', error_probs)
+                r_fixed_p = filter_results(res_fixed_p, 'error_prob', error_probs)
+                results_vary_l_fixed_p[n] = r_fixed_p
+
+            else:
+                path_to_loaded_data = f"{path_to_save_csvs}/{suffix}"
+
+        print("Experiment #2 completed!")
 
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     """""      THIRD EXPERIMENT - VARYING NUMBER OF READS FOR FIXED L AND FOR ALL C VALUES     """""
     """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    results_vary_n_fixed_k = {}
+    results_vary_n_fixed_p = {}
 
-    print("Experiment #3 started!") #TODO - log_scale=True
+    if not skip_3 or data_replace_experiment == 3:
 
-    # Fixed l
-    result_vary_n = defaultdict(list)
-    for l in l_values:
+        print("Experiment #3 started!")
+        # Fixed l - log_scale=True
+        for l in l_values:
+            common_prefix = "experiment_varying_n"
+            suffix = f"{common_prefix}/fixed_l_{l}"
+            paths_vary_n = create_paths([(path_to_save_csvs, suffix), (path_to_save_plots, suffix)])
 
-        paths_n = create_paths([(path_to_save_csvs, f"experiment_varying_n_fixed_l_{l}"),
-                                (path_to_save_plots, f"experiment_varying_n_fixed_l_{l}")])
-        paths_comparison.insert(2, create_paths([(path_to_save_plots, f"experiment_varying_n_fixed_l_{l}/comparison")])[0])
+            prefix_comparison = f"{common_prefix}/comparison"
+            paths_comparison_fixed_k.insert(exp_2_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_k")])[0])
+            paths_comparison_fixed_p.insert(exp_2_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_p")])[0])
 
-        median_n = int(n_values[len(n_values) // 2])
+            median_n = int(n_values[len(n_values) // 2])
 
-        result_vary_n[l].append(experiment_varying_value(genome, n_values, [l], error_probs,
-                                                         expected_coverage=total_coverage_targets,
-                                                         experiment_name=f"experiment_varying_n_fixed_l_{l}",
-                                                         paths=paths_n, return_results=True, log_scale=True, 
-                                                         separator=median_n))
+            if data_replace_experiment != 3:
+                results = experiment_varying_value(genome, n_values, [l], error_probs, k_values,
+                                                   expected_coverage=total_coverage_targets,
+                                                   experiment_name=f"{common_prefix}_fixed_l_{l}", paths=paths_vary_n,
+                                                   separator=median_n, return_results=True, log_scale=True)
 
-    print("Experiment #3 completed!")
+                res_fixed_k = filter_results(results, 'k', k_values)
+                r_fixed_k = filter_results(res_fixed_k, 'k', k_values)
+                results_vary_l_fixed_k[l] = r_fixed_k
+                res_fixed_p = filter_results(results, 'error_prob', error_probs)
+                r_fixed_p = filter_results(res_fixed_p, 'error_prob', error_probs)
+                results_vary_l_fixed_p[l] = r_fixed_p
 
-    # TODO - keep the option to do a combined graph from results_vary_l and results_vary_n
+            else:
+                path_to_loaded_data = f"{path_to_save_csvs}/{suffix}"
+
+        print("Experiment #3 completed!")
+
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    """""           OPTIONAL - LOAD DATA INSTEAD OF RUNNING THE EXPERIMENTS AGAIN              """""
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    # Optional - Load results from CSV files
+    results_fixed_k, results_fixed_p = [], []
+    if data_replace_experiment is not None:
+
+        # Load the list of dictionaries return from expriements functions
+        #pattern = "C_" if data_replace_experiment == 1 else "fixed_n_" if data_replace_experiment == 2 else "fixed_l_"
+        #results = load_coverage_results_from_csv(path_to_loaded_data, pattern)
+        results = load_and_clean_results(path_to_loaded_data)
+
+        print(f"\nresults:\n{results}\n")
+
+        # Filter it according the group by values
+        for k in k_values:
+            results_fixed_k.append(filter_results(results, 'k', k))
+
+        print(f"\nall_coverage_results_fixed_k:\n{all_coverage_results_fixed_k}\n")
+
+        for p in error_probs:
+            results_fixed_p.append(filter_results(results, 'error_prob', p))
+
+        print(f"\nall_coverage_results_fixed_p:\n{all_coverage_results_fixed_p}\n")
 
     # Plot comparison of all experiments
+    print("Plotting Comparison Graphs...")
 
-    # Experiment 1 - k & error_probe
-    plot_coverage_comparison(all_coverage_results_fixed_k, genome_length, path=paths_comparison_fixed_k[0]) #TODO - Adjust
-    plot_coverage_comparison(all_coverage_results_fixed_p, genome_length, path=paths_comparison_fixed_p[0]) #TODO - Adjust
-
-    #plot_coverage_comparison(result_vary_l, genome_length, path=paths_comparison[1])
-    #plot_coverage_comparison(result_vary_n, genome_length, path=paths_comparison[2])
+    if not skip_1 or data_replace_experiment == 1:
+        res_k = results_fixed_k if data_replace_experiment == 1 else all_coverage_results_fixed_k
+        res_p = results_fixed_p if data_replace_experiment == 1 else all_coverage_results_fixed_p
+        plot_coverage_comparison(res_k, genome_length, path=paths_comparison_fixed_k[exp_1_idx])
+        plot_coverage_comparison(res_p, genome_length, path=paths_comparison_fixed_p[exp_1_idx])
+    if not skip_2 or data_replace_experiment == 2:
+        res_k = results_vary_l_fixed_k if data_replace_experiment == 2 else all_coverage_results_fixed_k
+        res_p = results_vary_l_fixed_p if data_replace_experiment == 2 else all_coverage_results_fixed_p
+        plot_coverage_comparison(res_k, genome_length, path=paths_comparison_fixed_k[exp_2_idx])
+        plot_coverage_comparison(res_p, genome_length, path=paths_comparison_fixed_p[exp_2_idx])
+    if not skip_3 or data_replace_experiment == 3:
+        res_k = results_vary_n_fixed_k if data_replace_experiment == 3 else all_coverage_results_fixed_k
+        res_p = results_vary_n_fixed_p if data_replace_experiment == 3 else all_coverage_results_fixed_p
+        plot_coverage_comparison(results_vary_n_fixed_k, genome_length, path=paths_comparison_fixed_k[exp_3_idx])
+        plot_coverage_comparison(results_vary_n_fixed_p, genome_length, path=paths_comparison_fixed_p[exp_3_idx])
 
     print("All experiments completed!")
 
@@ -217,8 +293,9 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_
                     'contigs': None
                 })
 
+
     # Run simulations
-    results = run_simulations_parallel(params, path=paths[1]) # Returns list of dictionaries
+    results = run_simulations_parallel(params, path=paths[1])  # Returns list of dictionaries
 
     # Save results
     os.makedirs(paths[0], exist_ok=True)
@@ -258,8 +335,9 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_
         return results
 
 
-def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_values, expected_coverage, experiment_name, paths,
-                             num_iterations=10, log_scale=False, separator=None, return_results=False, grouping_value='error_prob'):
+def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_values, expected_coverage,
+                             experiment_name, paths, num_iterations=10, log_scale=False, separator=None,
+                             return_results=False):
     """
     Experiment: Vary variable values to achieve different coverage depths.
 
@@ -276,7 +354,6 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_v
         log_scale (bool): Whether to use log scale for x-axis.
         separator (int): an integer to separate for different plots if they smaller or bigger than it.
         return_results (bool): Whether to return the results.
-        grouping_value (str): Group the results by 'error_prob' or 'k'.
 
     Returns:
         None (Saves results to files and generates plots)
@@ -310,26 +387,39 @@ def experiment_varying_value(reference_genome, n_values, l_values, p_values, k_v
                         'contigs': None
                     })
 
-
     # Run simulations
-    results = run_simulations_parallel(params, path=paths[1], grouping_value=grouping_value)
+    results = run_simulations_parallel(params, path=paths[1])
 
     # Save results
+    os.makedirs(paths[0], exist_ok=True)
     save_results(results, experiment_name, path=paths[0])
 
-    # TODO - update like the const version
+    # Create folders for the experiment
+    group_by_str = ['fixed_p', 'fixed_k']
+    folders_name = create_paths([(paths[1], f"{group_name}") for group_name in group_by_str])
 
-    """# Plot results
-    if len(n_values) > 1:
-        plot_experiment_results_by_other_values(results, x_key="num_reads", coverage_key="expected_coverage",
-                                                path=paths[1], log_scale=log_scale,
-                                                num_iterations=num_iterations, separator=separator,
-                                                other_value_key=grouping_value)
-    elif len(l_values) > 1:
-        plot_experiment_results_by_other_values(results, x_key="read_length", coverage_key="expected_coverage",
-                                                path=paths[1], log_scale=log_scale,
-                                                num_iterations=num_iterations, separator=separator,
-                                                other_value_key=grouping_value)
+    # Plot results grouped by k
+    x_key = "num_reads" if len(n_values) > 1 else "read_length"
+
+    # Fixed p
+    print(f"Plotting Measures for group by k with for {x_key}...")
+    plot_experiment_results_by_other_values(results, x_key=x_key, coverage_key="expected_coverage",
+                                            path=folders_name[0], log_scale=log_scale, num_iterations=num_iterations,
+                                            separator=separator, other_value_key='k')
+
+    # Fixed k
+    print(f"Plotting Measures for group by error_prob with for {x_key}...")
+    plot_experiment_results_by_other_values(results, x_key=x_key, coverage_key="expected_coverage",
+                                            path=folders_name[1], log_scale=log_scale, num_iterations=num_iterations,
+                                            separator=separator, other_value_key='error_prob')
+
+    # Plot combined results
+    for x_key in ["num_reads", "read_length"]:
+        print(f"Plotting Measures for two values: p & k, for {x_key}...")
+        plot_experiment_results_by_two_values(results, x_key=x_key, group_key_1="error_prob", group_key_2="k",
+                                              coverage_key="expected_coverage", path=paths[1], log_scale=log_scale,
+                                              num_iterations=num_iterations)
+
     if return_results:
         return results
 
@@ -341,46 +431,22 @@ def filter_results(results, key, values):
     Parameters:
         results (list): List of result dictionaries.
         key (str): Key to filter by.
-        values: Values to filter by.
+        values: Value or list of values to filter by.
 
     Returns:
         list: Filtered list of result dictionaries.
     """
     output = []
-    for value in values:
-        filtered_results = [r for r in results if r[key] == value]
+    if isinstance(values, (list, tuple, np.ndarray)):  # Check if values is iterable
+        for value in values:
+            filtered_results = [r for r in results if r[key] == value]
+            output.extend(filtered_results)
+    else:  # Handle single value case
+        filtered_results = [r for r in results if r[key] == values]
         output.extend(filtered_results)
 
     return output
 
-        for i in range(num_iterations):
-            results = run_simulations([params], num_iteration=i + 1, path=experiment_folder)  # first iteration is 1
-            all_iteration_results_error_prone.append(results[0])  # Get first dict from the list
-
-        # Extract **only numeric keys** for averaging
-        numeric_keys = [
-            key for key in all_iteration_results_error_prone[0].keys()
-            if isinstance(all_iteration_results_error_prone[0][key], (int, float, np.number))
-        ]
-
-        avg_results_error_prone = {
-            key: np.mean([r[key] for r in all_iteration_results_error_prone]) for key in numeric_keys
-        }
-        std_results_error_prone = {
-            key: np.std([r[key] for r in all_iteration_results_error_prone]) for key in numeric_keys
-        }
-
-        # Rename keys for clarity
-        formatted_results = {
-            **params,
-            **{f"{key} avg": avg_results_error_prone[key] for key in avg_results_error_prone},
-            **{f"{key} std": std_results_error_prone[key] for key in std_results_error_prone},
-            **{f"{key} raw": [r[key] for r in all_iteration_results_error_prone] for key in numeric_keys},
-        }
-
-        results.append(formatted_results)
-
-    return results
 
 def run_simulations(params_list, num_iteration, path="plots"):
     """
@@ -397,18 +463,22 @@ def run_simulations(params_list, num_iteration, path="plots"):
     results_error_prone = []
 
     for params in params_list:
-        contigs, measures = test_assembly(params['reference_genome'], params['read_length'], params['num_reads'],
-                                          params['error_prob'], params['k'], params['experiment_name'], num_iteration, path)
+        contigs, measures, contigs_alignments_details, error_prone_reads = test_assembly(params['reference_genome'], params['read_length'],
+                                                                                         params['num_reads'], params['error_prob'],
+                                                                                         params['k'], params['experiment_name'],
+                                                                                         num_iteration, path)
 
-        # Add parameters to results
+        # Add parameters to results - store later in csv
         params['contigs'] = contigs
+        params['contigs_alignments_details'] = contigs_alignments_details
+        params['error_prone_reads'] = error_prone_reads
         result_error_prone = {**params, **measures}
         results_error_prone.append(result_error_prone)
 
     return results_error_prone
 
 
-def run_simulations_parallel(params_list, path="plots", grouping_value='error_prob'):
+def run_simulations_parallel(params_list, path="plots"):
     """
     Run simulations for each parameter combination in parallel using joblib.
     Each parameter set will be processed independently by a different core.
@@ -416,7 +486,6 @@ def run_simulations_parallel(params_list, path="plots", grouping_value='error_pr
     Parameters:
         params_list (list): List of parameter dictionaries.
         path (str): Path to save the plots.
-        grouping_value (str): The value to group the results by.
 
     Returns:
         list: List of result dictionaries with average and std for numeric keys.
@@ -428,12 +497,8 @@ def run_simulations_parallel(params_list, path="plots", grouping_value='error_pr
             f"expected coverage={params['expected_coverage']:.2f}x"
         )
         # Create folders for the experiment
-        group_by_str = 'k' if grouping_value == 'k' else 'p'
-        group_by_val = params['k'] if grouping_value == 'k' else params['error_prob']
-        fixed_str = 'fixed_p' if grouping_value == 'k' else 'fixed_k'
-        fixed_val = params['error_prob'] if grouping_value == 'k' else params['k']
         experiment_name = (f"test_assembly/N={params['num_reads']}_l={params['read_length']}_"
-                           f"{group_by_str}_{group_by_val}_{fixed_str}_{fixed_val}")
+                           f"p={params['error_prob']}_k={params['k']}")
 
         experiment_folder = create_paths([(path, experiment_name)])[0]
 
@@ -475,5 +540,9 @@ def run_simulations_parallel(params_list, path="plots", grouping_value='error_pr
 
 if __name__ == "__main__":
     todos_handled = False  # change to true when todos are handled.
-    assert todos_handled, "Handle TODOs - plot for iterations - to plot them or not"
-    run_experiments("sequence.fasta")
+    assert todos_handled, "Handle TODOs Before"
+    genome_fasta_file_name = "sequence.fasta"
+    skip_1 , skip_2 , skip_3 = True, True, True #TODO: True-> skip over this exp, False-> make it
+    data_replace_experiment = None #TODO: if necessary can be used
+    run_experiments(genome_fasta_file_name, skip_1=skip_1, skip_2=skip_2, skip_3=skip_3,
+                    data_replace_experiment=data_replace_experiment)
