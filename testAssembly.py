@@ -19,7 +19,7 @@ def test_assembly(genome, l, N, error_prob, k, experiment_name, num_iteration, p
         path (str): The path to save the plots.
 
     Returns:
-        tuple: A tuple containing the assembled contigs and the performance measures.
+        tuple: A tuple containing the assembled contigs, the performance measures, the contigs alignments details, and the error-prone reads.
     """
     # Generate error-free reads
     error_free_reads = generate_error_free_reads(genome, l, N)
@@ -29,10 +29,12 @@ def test_assembly(genome, l, N, error_prob, k, experiment_name, num_iteration, p
     contigs_error_prone = assemble_contigs_using_overlap_graphs(error_prone_reads, k=k)
 
     # Compute performance measures for error-prone assembly
-    performance_error_prone = calculate_measures(contigs_error_prone, error_prone_reads, len(error_prone_reads), l,
-                                                 error_prob, genome, experiment_name, num_iteration, path)
+    performance_error_prone, contigs_alignments_details = calculate_measures(contigs_error_prone, error_prone_reads,
+                                                                             len(error_prone_reads), l,
+                                                                             error_prob, genome, experiment_name,
+                                                                             num_iteration, path)
 
-    return contigs_error_prone, performance_error_prone
+    return contigs_error_prone, performance_error_prone, contigs_alignments_details, error_prone_reads
 
 
 def test_assembly_new_pipeline(genome, l, N, experiment_name, num_iteration, path, error_prob, fuzz):
@@ -50,7 +52,7 @@ def test_assembly_new_pipeline(genome, l, N, experiment_name, num_iteration, pat
         fuzz (int): Introduces tolerance for slight variations in overlap score.
 
     Returns:
-        tuple: A tuple containing the assembled contigs and the performance measures.
+        tuple: A tuple containing the assembled contigs, the performance measures, the contigs alignments details, and the error-prone reads.
     """
     # Generate error-free reads
     error_free_reads = generate_error_free_reads(genome, l, N)
@@ -60,7 +62,10 @@ def test_assembly_new_pipeline(genome, l, N, experiment_name, num_iteration, pat
     contigs_error_prone = assemble_contigs_string(error_prone_reads, fuzz=fuzz)
 
     # Compute performance measures for error-prone assembly
-    performance_error_prone = calculate_measures(contigs_error_prone, error_prone_reads, len(error_prone_reads), l,
-                                                     error_prob, genome, experiment_name, num_iteration, path)
+    performance_error_prone, contigs_alignments_details = calculate_measures(contigs_error_prone, error_prone_reads,
+                                                                             len(error_prone_reads), l,
+                                                                             error_prob, genome, experiment_name,
+                                                                             num_iteration, path)
 
-    return contigs_error_prone, performance_error_prone
+    return contigs_error_prone, performance_error_prone, contigs_alignments_details, error_prone_reads
+
