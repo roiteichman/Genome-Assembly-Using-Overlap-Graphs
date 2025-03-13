@@ -833,12 +833,11 @@ def plot_experiment_results_by_two_values(results, x_key="num_reads", group_key_
     x_values = sorted(df[x_key].unique())
 
     fig, axes = create_figure()
-    fig.suptitle(f"Plot by {group_key_1} & {group_key_2}, x={x_key}", fontsize=28)
+    group_key_1_str = 'p' if group_key_1 == 'error_prob' else group_key_1
+    fig.suptitle(f"Measures for {x_key} by {group_key_1_str} & {group_key_2}", fontsize=28)
 
     for i, (metric, label) in enumerate(zip(metrics, metric_labels)):
         ax = axes[i]
-        # We'll generate a different color/linestyle for each combination
-        # For simplicity, let's just build a label p=...,k=...
         for v1 in val1_list:
             for v2 in val2_list:
                 df_sub = df[(df[group_key_1] == v1) & (df[group_key_2] == v2)]
@@ -851,7 +850,7 @@ def plot_experiment_results_by_two_values(results, x_key="num_reads", group_key_
                 y_std = df_sub[f"{metric} std"].values
 
                 # e.g. label = f"p={v1}, k={v2}"
-                line_label = f"{group_key_1}={v1}, {group_key_2}={v2}"
+                line_label = f"{group_key_1_str}={v1}, {group_key_2}={v2}"
                 ax.errorbar(
                     x_vals, y_avg, yerr=y_std,
                     fmt='o-', capsize=4, label=line_label
@@ -866,7 +865,7 @@ def plot_experiment_results_by_two_values(results, x_key="num_reads", group_key_
 
         ax.set_xlabel(x_key)
         ax.set_ylabel(label)
-        ax.set_title(f"{label} vs. {x_key}", fontsize=22)
+        ax.set_title(f"{label} vs. {x_key}", fontsize=24)
         ax.grid(True, alpha=0.3)
         if log_scale:
             ax.set_xscale("log")
@@ -881,7 +880,7 @@ def plot_experiment_results_by_two_values(results, x_key="num_reads", group_key_
     plt.subplots_adjust(wspace=0.3, hspace=0.45, top=0.90)  # Make room for suptitle
 
     os.makedirs(path, exist_ok=True)
-    plt.savefig(os.path.join(path, f"two_values_{group_key_1}_{group_key_2}.png"), dpi=300)
+    plt.savefig(os.path.join(path, f"{x_key}_by_two_values_{group_key_1_str}_{group_key_2}.png"), dpi=300)
     plt.close()
 
 
