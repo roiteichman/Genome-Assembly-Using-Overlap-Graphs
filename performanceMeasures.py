@@ -49,12 +49,11 @@ def calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, refer
                     """
                     mismatches_aligned_regions[start + i] += 1
 
-    #print(f"Coverage: {coverage}")
-    #print(f"Mismatch Rate Aligned Regions: {mismatches_aligned_regions}")
-    if num_iteration != 1 and np.all(coverage == coverage[0]): #reduce amount of plots
+    # reduce amount of plots
+    if num_iteration != 1 and np.all(coverage == coverage[0]):
         pass
-    else: #plot only interesting plot from the first iteration
-        # plot only the interesting cases
+    else:
+        # plot only interesting plot from the first iteration
         plot_genome_coverage(coverage, genome_length, experiment_name, num_iteration, path)
         plot_genome_depth(coverage, expected_coverage, genome_length, experiment_name, num_iteration, path)
 
