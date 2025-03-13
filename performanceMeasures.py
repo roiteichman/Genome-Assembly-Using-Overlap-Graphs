@@ -194,7 +194,7 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_
             experiment_name (str): The name of the experiment.
             num_iteration (int): The number of the specific iteration.
         Returns:
-            dict: Dictionary of performance metrics.
+            dict: tuple(dict, dict) Dictionaries of performance metrics and inforamtion about the alignemtns for storing in the results.csv file.
 
         Metrics:
         - Number of Contigs: Number of contigs assembled.
@@ -230,13 +230,15 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_
             calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, ref_genome, expected_coverage,
                                                         experiment_name, num_iteration, path))
 
-        return {
+        measures = {
             "Number of Contigs": len(contigs),
             "Genome Coverage": genome_coverage,
             "N50": calculate_n50(contigs),
             "Mismatch Rate Aligned Regions": mismatch_rate_aligned_regions,
             "Mismatch Rate Genome Level": mismatch_rate_full_genome,
         }
+
+        return measures, contigs_alignment_details
 
 
 if __name__ == "__main__":
