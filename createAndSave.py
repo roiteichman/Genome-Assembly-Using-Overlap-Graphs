@@ -114,6 +114,31 @@ def load_coverage_results_from_csv(base_path, name_pattern):
     return all_coverage_results
 
 
+def parse_list_with_numpy(x, col):
+    """
+    Helper function to parse lists with NumPy types.
+    """
+    try:
+        # Replace NumPy types with standard Python types
+        x = re.sub(r'np\.int64\((\d+)\)', r'\1', x)
+        x = re.sub(r'np\.float64\(([\d.]+)\)', r'\1', x)
+
+        lst = ast.literal_eval(x)
+        if not isinstance(lst, list):
+            return lst  # return non list values as is.
+
+        if col in ["num_reads raw", "read_length raw", "k raw", "Number of Contigs raw", "N50 raw"]:
+            return [int(val) for val in lst]
+        elif col in ["error_prob raw", "Mismatch Rate Aligned Regions raw",
+                     "Mismatch Rate Genome Level raw", "expected_coverage raw", "Genome Coverage raw"]:
+            return [float(val) for val in lst]
+        else:
+            return lst  # return other lists as is.
+    except (ValueError, SyntaxError) as e:
+        print(f"Error converting column: {e} - value: {x}")
+        return# return empty list on error.
+
+
 def load_and_clean_results(folder_path):
     """
     Loads results from a CSV file, cleans the data, and returns it as a list of dictionaries.
@@ -136,24 +161,7 @@ def load_and_clean_results(folder_path):
 
         # Convert "raw" columns from string representation of lists to actual lists and handle numpy types
         for col in raw_columns:
-            def convert_list(x):
-                try:
-                    lst = ast.literal_eval(x)
-                    if not isinstance(lst, list):
-                        return lst  # return non list values as is.
-
-                    if col in ["num_reads raw", "read_length raw", "Number of Contigs raw", "N50 raw"]:
-                        return [int(val) for val in lst]
-                    elif col in ["error_prob raw", "Mismatch Rate Aligned Regions raw",
-                                 "Mismatch Rate Genome Level raw", "expected_coverage raw", "Genome Coverage raw"]:
-                        return [float(val) for val in lst]
-                    else:
-                        return lst  # return other lists as is.
-                except (ValueError, SyntaxError) as e:
-                    print(f"Error converting column '{col}': {e} - value: {x}")
-                    return []  # return empty list on error.
-
-            df[col] = df[col].apply(convert_list)
+            df[col] = df[col].apply(lambda x: parse_list_with_numpy(x, col))
 
         # Convert DataFrame to a list of dictionaries
         cleaned_results = df.to_dict('records')
@@ -169,3 +177,66 @@ def load_and_clean_results(folder_path):
     except Exception as e:
         print(f"An error occurred while loading or cleaning {file_path}: {e}")
         return
+
+
+def load_and_combine_results(base_path):
+    """
+    Loads and combines results from all 'results.csv' files in subdirectories of base_path,
+    returning a single list of dictionaries.
+
+    Args:
+        base_path (str): The main directory to search within.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a row from any of the CSV files.
+    """
+    all_results = []
+    for dir_name in os.listdir(base_path):
+        subdir_path = os.path.join(base_path, dir_name)
+        if os.path.isdir(subdir_path):  # Check if it's a directory
+            results_path = os.path.join(subdir_path, "results.csv")
+            try:
+                df = pd.read_csv(results_path)
+
+                # Identify columns with "raw" in their suffix
+                raw_columns = [col for col in df.columns if col.endswith("raw")]
+
+                # Apply parsing to "raw" columns
+                for col in raw_columns:
+                    df[col] = df[col].apply(lambda x: parse_list_with_numpy(x, col))
+
+                # Convert DataFrame to a list of dictionaries and extend the main list
+                cleaned_results = df.to_dict('records')
+                all_results.extend(cleaned_results)
+
+            except FileNotFoundError:
+                print(f"Error: File not found at {results_path}")
+            except pd.errors.EmptyDataError:
+                print(f"Warning: {results_path} is empty.")
+            except Exception as e:
+                print(f"An error occurred while loading or cleaning {results_path}: {e}")
+    return all_results
+
+
+def load_all_results(base_path):
+    """
+    Loads and cleans results from all 'results.csv' files in subdirectories of base_path.
+
+    Args:
+        base_path (str): The main directory to search within.
+
+    Returns:
+        tuple (dict, list): A dictionary where keys are subdirectory names and values are lists of results.
+                            And a list of lists of results.
+    """
+    all_results = {}
+    all_res_list = []
+    for dir_name in os.listdir(base_path):
+        subdir_path = os.path.join(base_path, dir_name)
+        if os.path.isdir(subdir_path):  # Check if it's a directory
+            results = load_and_clean_results(subdir_path)
+            if results:  # Only add if results were loaded successfully
+                all_results[dir_name] = results
+                all_res_list.append(results)
+    return all_results, all_res_list
+
