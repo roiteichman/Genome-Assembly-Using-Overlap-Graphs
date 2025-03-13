@@ -228,7 +228,7 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_
                 "End Position": end,
             }
 
-            print(f"Alignment: {to_print}\nScore: {score}\nStart: {start}\nEnd: {end}")
+            #print(f"Alignment: {to_print}\nScore: {score}\nStart: {start}\nEnd: {end}")
 
             # TODO - run just for small amount of experiments because very computational heavy
             """plot_reconstructed_coverage(contigs, reads, num_reads, reads_length, reference_genome,
