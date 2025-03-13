@@ -169,8 +169,8 @@ def plot_reconstructed_coverage(contigs, reads, num_reads, read_length, referenc
 
 
 def plot_experiment_results_by_other_values(results, x_key="num_reads", coverage_key="expected_coverage",
-                                            path="plots", log_scale=False, num_iterations=1, separator=None,
-                                            other_value_key='error_prob'): #todo change 1 to 10
+                                            path="plots", log_scale=False, num_iterations=10, separator=None,
+                                            other_value_key='error_prob'):
     """
     Plot experiment results with x_key values as x-axis and different error probabilities as separate series.
     Includes individual plots for each p value with trend lines, and combined plots, both includes version with raw data.

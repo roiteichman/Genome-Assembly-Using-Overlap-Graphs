@@ -50,7 +50,7 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(big_n), 5).astype(int)) # np.array([2, 5])
     l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int)) #np.array([5, 10])
     error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
-    k_values = np.unique(np.linspace(0, 15, 4).astype(int)) #np.array([0, 1])
+    k_values = np.unique(np.linspace(5, 15, 3).astype(int)) #np.array([0, 1]) TODO - I give up on k=0, just if there will be enough time
     paths_comparison_fixed_k = []
     paths_comparison_fixed_p = []
 

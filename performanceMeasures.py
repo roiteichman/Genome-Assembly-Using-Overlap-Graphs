@@ -38,6 +38,15 @@ def calculate_genome_coverage_and_mismatch_rate(contigs_alignment_details, refer
                 ref_char = aligned_ref[i]
                 query_char = aligned_query[i]
                 if query_char == '-' or query_char != ref_char:
+                    """
+                    print("====================")
+                    print(f"genom: {reference_genome}")
+                    print(f"print: {alignment_to_print}")
+                    print(f"start: {start}, i: {i}, end: {end}, len(aligned_ref): {len(aligned_ref)}")
+                    print(f"query_char: {query_char}, ref_char: {ref_char}")
+                    print(f"aligned_ref[{i}]= {aligned_ref[i]}")
+                    print("====================")
+                    """
                     mismatches_aligned_regions[start + i] += 1
 
     #print(f"Coverage: {coverage}")
@@ -306,27 +315,35 @@ if __name__ == "__main__":
     print("=====")
     print(error_rate3_v2)"""
 
-    genome = "ATGCGTACGTTAGCATGCGTACGTTAGC"
+    #genome = "ATGCGTACGTTAGC"#"ATGCGTACGTTAGCATGCGTACGTTAGC"
+
+    """
+    ACGTTAGC
+          ||||||||
+    TACG-T-GC
+    """
 
     # generate 10 reads of length 5 of the genome
-    reads = [genome[i:i+5] for i in range(0, len(genome)-5)]
-    import random
+    #reads = [genome[i:i+5] for i in range(0, len(genome)-5)]
+    #import random
     # chose random 10 reads
-    reads = random.sample(reads, 10)
+    #reads = random.sample(reads, 10)
     from overlapGraphs import assemble_contigs_using_overlap_graphs, assemble_contigs_string
-    contigs = assemble_contigs_using_overlap_graphs(reads, 2)
+    #reads = contigs = "ATGCG" #assemble_contigs_using_overlap_graphs(reads, 2)
     #['ACGTTGCGT', 'TGCGT', 'TGCGT']#assemble_contigs_using_overlap_graphs(reads)
 
-    results = calculate_measures(contigs, reads, 10, 5, 0, genome, "t1", 1)
+    #results = calculate_measures(["TACGTGC"], ["TACGTGC"], 1, 5, 0, genome, "t1", 1)
 
-    print(f"genome: {genome}")
-    print(f"contigs: {contigs}")
-    print(f"reads: {reads}")
-    print(results)
-    print("++++++++++++++++++++")
+    #print(f"genome: {genome}")
+    #print(f"contigs: TACGTGC")
+    #print(f"reads: TACGTGC")
+    #print(results)
+    #print("++++++++++++++++++++")
+    """
     contigs_string = assemble_contigs_string(reads)
     results_string = calculate_measures(contigs_string, reads, 10, 5, 0, genome, "t1", 1)
     print(f"genome: {genome}")
     print(f"contigs: {contigs_string}")
     print(f"reads: {reads}")
     print(results_string)
+    """

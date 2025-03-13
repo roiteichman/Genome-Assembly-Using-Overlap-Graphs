@@ -215,7 +215,7 @@ def construct_overlap_graph_string(reads):
     for read_a, count_a in read_copies.items():
         for read_b, count_b in read_copies.items():
             if read_a != read_b:
-                to_print, aligned_source, aligned_target, score, alignment_end_position = overlap_alignment(read_a, read_b, mismatch=-1000000) #TODO - remove, its just for small example
+                to_print, aligned_source, aligned_target, score, alignment_end_position = overlap_alignment(read_a, read_b)#, mismatch=-1000000) TODO - remove, its just for small example
 
                 if score > 0:  # Only add edges for significant overlaps
                     for copy_index_a in range(count_a):
@@ -337,7 +337,7 @@ def construct_string_graph(reads):
 
     # Compute overlaps using overlap alignment
     for read_a, read_b in combinations(reads, 2):
-        to_print, aligned_source, aligned_target, score, end_position = overlap_alignment(read_a, read_b, mismatch=-1000000) #TODO - remove, its just for small example
+        to_print, aligned_source, aligned_target, score, end_position = overlap_alignment(read_a, read_b)#, mismatch=-1000000) #TODO - remove, its just for small example
 
         if score > 0:  # Ensure there is a significant overlap
             graph.add_edge(read_a, read_b, weight=score, end_position=end_position)
