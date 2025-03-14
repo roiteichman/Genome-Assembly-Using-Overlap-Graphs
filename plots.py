@@ -760,7 +760,7 @@ def plot_coverage_comparison(all_coverage_results, genome_length, path="plots", 
                             marker='o')
 
             # set up axis configurations
-            label_ax = f'Coverage (C times {genome_length})'
+            label_ax = f'Coverage Value'
             setup_plot_axis(ax, label_ax, metric, label, log_scale=log_scale)
             ax.legend(loc='upper right', fontsize=12)
 

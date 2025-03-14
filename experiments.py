@@ -19,7 +19,7 @@ upper_bound_p = get_upper_bound_p()
 big_n = get_big_n()
 
 
-def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", path_to_save_plots="plots",
+def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results_k0", path_to_save_plots="plots_k0",
                     skip_1=False, skip_2=False, skip_3=False, data_replace_experiment=None):
     """
     Main function to run all experimentation scenarios.
@@ -46,11 +46,11 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
 
     c_smaller_than_1 = round(((lower_bound_n * lower_bound_l) / genome_length), 3) #10/14
 
-    total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30] #[2, 5]
+    total_coverage_targets = [c_smaller_than_1, 2, 5, 10, 30] #[2, 5] # TODO - return to all values
     n_values = np.unique(np.logspace(np.log10(lower_bound_n), np.log10(big_n), 5).astype(int)) # np.array([2, 5])
     l_values = np.unique(np.linspace(lower_bound_l, upper_bound_l, 3).astype(int)) #np.array([5, 10])
     error_probs = np.unique(np.logspace(np.log10(get_lower_bound_p()), np.log10(get_upper_bound_p()), 3))
-    k_values = np.unique(np.linspace(5, 15, 3).astype(int)) #np.array([0, 1]) TODO - I give up on k=0, just if there will be enough time
+    k_values = np.unique(np.linspace(0, 15, 4).astype(int)) #np.array([0, 1]) TODO - I give up on k=0, just if there will be enough time
     paths_comparison_fixed_k = []
     paths_comparison_fixed_p = []
 
@@ -82,19 +82,21 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
             paths_comparison_fixed_k.insert(exp_1_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_k")])[0])
             paths_comparison_fixed_p.insert(exp_1_idx, create_paths([(path_to_save_plots, f"{prefix_comparison}/fixed_p")])[0])
 
-            if data_replace_experiment != 1:
+            results = []
+            if C in [10,30]:
                 results = experiment_const_coverage(genome, C, error_probs, k_values,
                                                     l_values=l_values,
                                                     x_axis_var="l",
                                                     experiment_name=experiment_name,
                                                     paths=paths_c, return_results=True)
-
-                res_fixed_k = filter_results(results, 'k', k_values)
-                all_coverage_results_fixed_k[C] = res_fixed_k
-                res_fixed_p = filter_results(results, 'error_prob', error_probs)
-                all_coverage_results_fixed_p[C] = res_fixed_p
             else:
-                path_to_loaded_data = f"{path_to_save_csvs}/{experiment_name}"
+                results = load_and_clean_results(f"results/experiment_const_coverage/C_{C}")
+                print(f"Load results for C={C}")
+            res_fixed_k = filter_results(results, 'k', k_values)
+            all_coverage_results_fixed_k[C] = res_fixed_k
+            res_fixed_p = filter_results(results, 'error_prob', error_probs)
+            all_coverage_results_fixed_p[C] = res_fixed_p
+
 
         print("Experiment #1 completed!")
 
@@ -206,8 +208,8 @@ def run_experiments(file_path="sequence.fasta", path_to_save_csvs="results", pat
     if not skip_1 or data_replace_experiment == 1:
         res_k = results_fixed_k if data_replace_experiment == 1 else all_coverage_results_fixed_k
         res_p = results_fixed_p if data_replace_experiment == 1 else all_coverage_results_fixed_p
-        plot_coverage_comparison(res_k, genome_length, path=paths_comparison_fixed_k[exp_1_idx])
-        plot_coverage_comparison(res_p, genome_length, path=paths_comparison_fixed_p[exp_1_idx])
+        plot_coverage_comparison(res_k, genome_length, path=paths_comparison_fixed_k[exp_1_idx], grouping_value='error_prob')
+        plot_coverage_comparison(res_p, genome_length, path=paths_comparison_fixed_p[exp_1_idx], grouping_value='k')
     if not skip_2 or data_replace_experiment == 2:
         res_k = results_vary_l_fixed_k if data_replace_experiment == 2 else all_coverage_results_fixed_k
         res_p = results_vary_l_fixed_p if data_replace_experiment == 2 else all_coverage_results_fixed_p
@@ -281,21 +283,26 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_
     for i, p in enumerate(error_probs):
         for m, k in enumerate(k_values):
             for j, (n, l) in enumerate(zip(n_values, l_values)):
-                params.append({
-                    'num_reads': n,
-                    'read_length': l,
-                    'error_prob': p,
-                    'k': k,
-                    'reference_genome': reference_genome,
-                    'expected_coverage': expected_coverage[j],
-                    'experiment_name': experiment_name,
-                    'num_iterations': num_iterations,
-                    'contigs': None
-                })
+                if k==0: # TODO just for adding k=0
+                    params.append({
+                        'num_reads': n,
+                        'read_length': l,
+                        'error_prob': p,
+                        'k': k,
+                        'reference_genome': reference_genome,
+                        'expected_coverage': expected_coverage[j],
+                        'experiment_name': experiment_name,
+                        'num_iterations': num_iterations,
+                        'contigs': None
+                    })
 
 
     # Run simulations
     results = run_simulations_parallel(params, path=paths[1])  # Returns list of dictionaries
+    suffix = "C_10" if 10>(expected_coverage[0]-10) else "C_30"
+    res_old = load_and_clean_results(f"results1/experiment_const_coverage/{suffix}")
+    # TODO - put the old result in results1/experiment_const_coverage/C_10 AND results1/experiment_const_coverage/C_30 respectively
+    results.extend(res_old)
 
     # Save results
     os.makedirs(paths[0], exist_ok=True)
@@ -542,7 +549,7 @@ if __name__ == "__main__":
     todos_handled = False  # change to true when todos are handled.
     assert todos_handled, "Handle TODOs Before"
     genome_fasta_file_name = "sequence.fasta"
-    skip_1 , skip_2 , skip_3 = True, True, True #TODO: True-> skip over this exp, False-> make it
+    skip_1 , skip_2 , skip_3 = False, True, True #TODO: True-> skip over this exp, False-> make it
     data_replace_experiment = None #TODO: if necessary can be used
     run_experiments(genome_fasta_file_name, skip_1=skip_1, skip_2=skip_2, skip_3=skip_3,
                     data_replace_experiment=data_replace_experiment)

@@ -248,7 +248,7 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, k, r
         }
 
         print(f"Performance measures for experiment_name={experiment_name} - N={num_reads}, l={reads_length}, "
-              f"p={error_prob}, k={k}, num_iteration={num_iteration}:\n{measures}\n{contigs_alignment_details}")
+              f"p={error_prob}, k={k}, num_iteration={num_iteration}:\n{measures}")
         return measures, contigs_alignment_details
 
 
