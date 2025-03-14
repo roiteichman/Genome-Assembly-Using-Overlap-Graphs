@@ -296,10 +296,6 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_
                         'contigs': None
                     })
 
-
-    # Run simulations
-    results = run_simulations_parallel(params, path=paths[1])  # Returns list of dictionaries
-
     suffix = ""
     C_is_smaller_than_1 = 1>=(1-expected_coverage[0])>=0 if 1>expected_coverage[0] else 1>(expected_coverage[0]-1)
     C_2 = 1>=(2-expected_coverage[0])>=0 if 2>expected_coverage[0] else 1>(expected_coverage[0]-2)
@@ -318,8 +314,14 @@ def experiment_const_coverage(reference_genome, coverage_target, error_probs, k_
     elif C_30:
         suffix = "C_30"
 
-    res_all_other_k = load_and_clean_results(f"results1/experiment_const_coverage/{suffix}")
+    res_all_other_k = load_and_clean_results(f"results/experiment_const_coverage/{suffix}")
+    if res_all_other_k:
+        print(f"load results for {suffix}")
     # TODO - put the old result in results/experiment_const_coverage/C_num where num choosen by upper if-else
+
+    # Run simulations
+    results = run_simulations_parallel(params, path=paths[1])  # Returns list of dictionaries
+
     results.extend(res_all_other_k)
 
     # Save results
