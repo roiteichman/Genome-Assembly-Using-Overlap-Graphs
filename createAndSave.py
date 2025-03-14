@@ -239,4 +239,3 @@ def load_all_results(base_path):
                 all_results[dir_name] = results
                 all_res_list.append(results)
     return all_results, all_res_list
-
