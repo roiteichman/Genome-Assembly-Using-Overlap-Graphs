@@ -43,3 +43,4 @@ def get_metrics():
 
 def get_metric_labels():
     return metric_labels
+
