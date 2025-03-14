@@ -148,23 +148,26 @@ def topological_sort(dag):
         raise ValueError("Graph is not a DAG! Cycles still exist.")
 
 
-def assemble_contigs_using_overlap_graphs(reads, k=5):
+def assemble_contigs_using_overlap_graphs(reads, k=5, params=None):
     """
     Assemble contigs using an overlap alignment graph with cycle removal and topological sorting.
 
     Parameters:
         reads (list): List of DNA reads.
         k (int): The length of the k-mer prefix to use for filtering reads.
+        params (dict): Additional parameters for printing and debugging.
 
     Returns:
         list: List of assembled contigs.
     """
 
     # Step 1: Construct the initial overlap graph
-    print("Constructing overlap graph...")
+    print(f"Constructing overlap graph for experiment_name={params['experiment_name']} - N={params['N']}, l={params['l']}, "
+          f"p={params['error_prob']}, k={params['k']}, num_iteration={params['num_iteration']}...")
     overlap_graph, read_copies = construct_overlap_graph_nx_k(reads, k=k)
     # Step 2: remove and sort the graph
-    print("Removing cycles from graph...")
+    print(f"Removing cycles from graph for experiment_name={params['experiment_name']} - N={params['N']}, l={params['l']}, "
+          f"p={params['error_prob']}, k={params['k']}, num_iteration={params['num_iteration']}...")
     dag = remove_cycles_from_graph(overlap_graph)
     # Step 3: Sort the graph topologically
     topo_order_with_copies = {node: i for i, node in enumerate(nx.topological_sort(dag))}
@@ -175,7 +178,8 @@ def assemble_contigs_using_overlap_graphs(reads, k=5):
         topo_order[read] = topo_order_with_copies[read_with_copy]
 
     # Step 4: Assemble contigs following the sorted order
-    print("Creating contig...")
+    print(f"Creating contig for experiment_name={params['experiment_name']} - N={params['N']}, l={params['l']}, "
+          f"p={params['error_prob']}, k={params['k']}, num_iteration={params['num_iteration']}...")
     visited = set()
     contigs = []
     for read in topo_order.keys():
@@ -185,6 +189,8 @@ def assemble_contigs_using_overlap_graphs(reads, k=5):
                 # Create a contig starting from the read
                 contig = create_contig(node_name, dag, visited, topo_order)
                 contigs.append(contig)
+    print(f"Contigs for experiment_name={params['experiment_name']} - N={params['N']}, l={params['l']}, "
+          f"p={params['error_prob']}, k={params['k']}, num_iteration={params['num_iteration']}:\n{contigs}")
     return contigs
 
 

@@ -187,7 +187,7 @@ def calculate_mismatch_rate_full_genome(contigs_alignment_details, reference_gen
     return min(1.0, mismatch_rate)
 
 
-def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_genome,
+def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, k, ref_genome,
                        experiment_name, num_iteration, path="plots"):
         """
         Computes essential assembly quality metrics.
@@ -198,6 +198,7 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_
             num_reads (int): Number of reads used for assembly.
             reads_length (int): Length of each read.
             error_prob (float): Probability of mutation in error-prone reads.
+            k (int): The length of the k-mer prefix to use for filtering reads.
             ref_genome (str): The reference genome sequence.
             experiment_name (str): The name of the experiment.
             num_iteration (int): The number of the specific iteration.
@@ -246,6 +247,8 @@ def calculate_measures(contigs, reads, num_reads, reads_length, error_prob, ref_
             "Mismatch Rate Genome Level": mismatch_rate_full_genome,
         }
 
+        print(f"Performance measures for experiment_name={experiment_name} - N={num_reads}, l={reads_length}, "
+              f"p={error_prob}, k={k}, num_iteration={num_iteration}:\n{measures}\n{contigs_alignment_details}")
         return measures, contigs_alignment_details
 
 

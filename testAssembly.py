@@ -26,12 +26,14 @@ def test_assembly(genome, l, N, error_prob, k, experiment_name, num_iteration, p
     # Generate error-prone reads
     error_prone_reads = generate_error_prone_reads(error_free_reads, error_prob)
 
-    contigs_error_prone = assemble_contigs_using_overlap_graphs(error_prone_reads, k=k)
+    params = {"N": N, "l": l, "k": k, "error_prob": error_prob, experiment_name: experiment_name, "num_iteration": num_iteration}
+
+    contigs_error_prone = assemble_contigs_using_overlap_graphs(error_prone_reads, k=k, params=params)
 
     # Compute performance measures for error-prone assembly
     performance_error_prone, contigs_alignments_details = calculate_measures(contigs_error_prone, error_prone_reads,
                                                                              len(error_prone_reads), l,
-                                                                             error_prob, genome, experiment_name,
+                                                                             error_prob, k, genome, experiment_name,
                                                                              num_iteration, path)
 
     return contigs_error_prone, performance_error_prone, contigs_alignments_details, error_prone_reads
@@ -64,7 +66,7 @@ def test_assembly_new_pipeline(genome, l, N, experiment_name, num_iteration, pat
     # Compute performance measures for error-prone assembly
     performance_error_prone, contigs_alignments_details = calculate_measures(contigs_error_prone, error_prone_reads,
                                                                              len(error_prone_reads), l,
-                                                                             error_prob, genome, experiment_name,
+                                                                             error_prob, fuzz, genome, experiment_name,
                                                                              num_iteration, path)
 
     return contigs_error_prone, performance_error_prone, contigs_alignments_details, error_prone_reads
