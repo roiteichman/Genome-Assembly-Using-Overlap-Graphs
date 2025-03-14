@@ -516,6 +516,9 @@ def run_simulations_parallel(params_list, path="plots"):
             # run_simulations is assumed to return a list of result dictionaries;
             # we use the first one since we expect one result per simulation.
             results = run_simulations([params], num_iteration=i + 1, path=experiment_folder)
+            backup_folder = create_paths([(path, f"iteration_{i+1}")])[0]
+            save_results(backup_folder, experiment_name, path=path)
+
             all_iteration_results_error_prone.append(results[0])
 
         # Extract only numeric keys for averaging
