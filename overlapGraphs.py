@@ -189,8 +189,7 @@ def assemble_contigs_using_overlap_graphs(reads, k=5, params=None):
                 # Create a contig starting from the read
                 contig = create_contig(node_name, dag, visited, topo_order)
                 contigs.append(contig)
-    print(f"Contigs for experiment_name={params['experiment_name']} - N={params['N']}, l={params['l']}, "
-          f"p={params['error_prob']}, k={params['k']}, num_iteration={params['num_iteration']}:\n{contigs}")
+
     return contigs
 
 
